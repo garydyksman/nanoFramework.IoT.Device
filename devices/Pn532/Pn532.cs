@@ -53,6 +53,12 @@ namespace Iot.Device.Pn532
         };
 
         private byte[] _i2CWakeUp = new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+        /// <inheritdoc/>
+        public override uint MaximumReadSize => 258;
+
+        /// <inheritdoc/>
+        public override uint MaximumWriteSize => 261;
         private ParametersFlags _parametersFlags;
         private SpiDevice _spiDevice = null;
         private I2cDevice _i2cDevice = null;
@@ -815,8 +821,9 @@ namespace Iot.Device.Pn532
         /// <param name="targetNumber">The card target number</param>
         /// <param name="dataToSend">The data to write to the card</param>
         /// <param name="dataFromCard">The potential data to receive</param>
+        /// <param name="protocol">The NFC protocol to use for communication.</param>
         /// <returns>The number of bytes read</returns>
-        public override int Transceive(byte targetNumber, SpanByte dataToSend, SpanByte dataFromCard)
+        public override int Transceive(byte targetNumber, SpanByte dataToSend, SpanByte dataFromCard, NfcProtocol protocol)
         {
             // We need to add some logic here to understand what the command is and the size of the needed buffer.
             // For Mifare card, the authentications needs to use the native part.
