@@ -4,6 +4,7 @@
 using System;
 using System.Device.Gpio;
 using System.Device.Spi;
+using System.Diagnostics;
 using System.Drawing;
 using System.Threading;
 using Iot.Device.EPaper;
@@ -47,11 +48,96 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
         /// </summary>
         public const SpiMode SpiMode = System.Device.Spi.SpiMode.Mode0;
 
+        private const byte CommandPanelSetting = 0x00;
+        private const byte CommandPowerOn = 0x04;
+        private const byte CommandPowerOff = 0x02;
+        private const byte CommandDeepSleep = 0x07;
+        private const byte CommandDisplayRefresh = 0x12;
+        private const byte CommandWriteOldImage = 0x10;
+        private const byte CommandWriteNewImage = 0x13;
+        private const byte CommandTemperatureSensor = 0x18;
+        private const byte CommandLutForVcom = 0x20;
+        private const byte CommandLutW2W = 0x21;
+        private const byte CommandLutB2W = 0x22;
+        private const byte CommandLutW2B = 0x23;
+        private const byte CommandLutB2B = 0x24;
+        private const byte CommandPll = 0x30;
+        private const byte CommandBorderWaveform = 0x3C;
+        private const byte CommandRamXRange = 0x44;
+        private const byte CommandRamYRange = 0x45;
+        private const byte CommandRamXPointer = 0x4E;
+        private const byte CommandRamYPointer = 0x4F;
+        private const byte CommandVcomAndDataInterval = 0x50;
+        private const byte CommandTcon = 0x60;
+        private const byte CommandTres = 0x61;
+        private const byte CommandVcom = 0x82;
+        private const byte CommandPws = 0xE3;
+        private const byte DeepSleepCheckCode = 0xA5;
+
+        private static readonly byte[] PartialLutVcom =
+        {
+            0x01, 0x08, 0x08, 0x03, 0x01, 0x01, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+
+        private static readonly byte[] PartialLutW2W =
+        {
+            0x01, 0x04, 0x04, 0x03, 0x01, 0x01, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+
+        private static readonly byte[] PartialLutB2W =
+        {
+            0x01, 0x88, 0x88, 0x87, 0x01, 0x01, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+
+        private static readonly byte[] PartialLutW2B =
+        {
+            0x01, 0x44, 0x44, 0x43, 0x01, 0x01, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+
+        private static readonly byte[] PartialLutB2B =
+        {
+            0x01, 0x04, 0x04, 0x03, 0x01, 0x01, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+
         private readonly SpiDevice _spiDevice;
         private readonly GpioController _gpioController;
         private readonly bool _shouldDispose;
         private readonly bool _useBusyPin;
         private readonly byte[] _whiteFrame;
+        private readonly byte[] _previousFrame;
 
         private GpioPin _resetPin;
         private GpioPin _busyPin;
@@ -101,9 +187,12 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
             }
 
             _whiteFrame = new byte[FrameBufferSize];
-            for (int i = 0; i < _whiteFrame.Length; i++)
+            _previousFrame = new byte[FrameBufferSize];
+
+            for (int i = 0; i < FrameBufferSize; i++)
             {
                 _whiteFrame[i] = 0xFF;
+                _previousFrame[i] = 0xFF;
             }
 
             FrameBuffer1bpp = new FrameBuffer1BitPerPixel(PanelHeight, PanelWidth);
@@ -153,7 +242,8 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
         }
 
         /// <summary>
-        /// Ends the frame draw operation by flushing the frame buffer and refreshing the panel.
+        /// Ends the frame draw operation by flushing the frame buffer and performing a full refresh.
+        /// Use <see cref="PerformPartialRefresh"/> explicitly for differential updates.
         /// </summary>
         public void EndFrameDraw()
         {
@@ -194,17 +284,12 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
         public void Flush()
         {
             PrepareForWrite();
+            ResetRamPointers();
 
-            SendCommand(0x4E);
-            SendData(0x01);
-
-            SendCommand(0x4F);
-            SendData(0xF9, 0x00);
-
-            SendCommand(0x13);
+            SendCommand(CommandWriteNewImage);
             SendData(FrameBuffer1bpp.Buffer);
 
-            SendCommand(0x10);
+            SendCommand(CommandWriteOldImage);
             SendData(_whiteFrame);
         }
 
@@ -225,7 +310,24 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
         /// <returns>True if the refresh command sequence was issued successfully.</returns>
         public bool PerformPartialRefresh()
         {
-            return PerformFullRefresh();
+            ConfigurePartialRefreshParameters();
+            ResetRamPointers();
+            WriteFrameBufferForPartialRefresh();
+
+            SendCommand(CommandPowerOn);
+            WaitReady();
+            WaitMs(50);
+
+            SendCommand(CommandDisplayRefresh);
+            WaitMs(50);
+            WaitReady();
+
+            SendCommand(CommandPowerOff);
+            WaitReady();
+            WaitMs(50);
+
+            SaveCurrentFrameAsPrevious();
+            return true;
         }
 
         /// <summary>
@@ -253,10 +355,10 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
         {
             HardwareReset();
 
-            SendCommand(0x12);
+            SendCommand(CommandDisplayRefresh);
             WaitReady();
 
-            SendCommand(0x00);
+            SendCommand(CommandPanelSetting);
             SendData(0xDF);
 
             SendCommand(0x4D);
@@ -268,23 +370,19 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
             SendCommand(0xF3);
             SendData(0x0A, 0x00, 0x00);
 
-            SendCommand(0x44);
+            SendCommand(CommandRamXRange);
             SendData(0x01, 0x0F);
 
-            SendCommand(0x45);
+            SendCommand(CommandRamYRange);
             SendData(0xF9, 0x00, 0x00, 0x00);
 
-            SendCommand(0x3C);
+            SendCommand(CommandBorderWaveform);
             SendData(0x01);
 
-            SendCommand(0x18);
+            SendCommand(CommandTemperatureSensor);
             SendData(0x80);
 
-            SendCommand(0x4E);
-            SendData(0x01);
-
-            SendCommand(0x4F);
-            SendData(0xF9, 0x00);
+            ResetRamPointers();
 
             WaitReady();
         }
@@ -298,17 +396,12 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
             FrameBuffer1bpp.Clear(Color.White);
 
             PrepareForWrite();
+            ResetRamPointers();
 
-            SendCommand(0x4E);
-            SendData(0x01);
-
-            SendCommand(0x4F);
-            SendData(0xF9, 0x00);
-
-            SendCommand(0x13);
+            SendCommand(CommandWriteNewImage);
             SendData(_whiteFrame);
 
-            SendCommand(0x10);
+            SendCommand(CommandWriteOldImage);
             SendData(_whiteFrame);
 
             if (triggerPageRefresh)
@@ -323,18 +416,19 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
         /// <returns>True if the refresh command sequence was issued successfully.</returns>
         public bool PerformFullRefresh()
         {
-            SendCommand(0x04);
+            SendCommand(CommandPowerOn);
             WaitReady();
             WaitMs(100);
 
-            SendCommand(0x12);
+            SendCommand(CommandDisplayRefresh);
             WaitMs(100);
             WaitReady();
 
-            SendCommand(0x02);
+            SendCommand(CommandPowerOff);
             WaitReady();
             WaitMs(100);
 
+            SaveCurrentFrameAsPrevious();
             return true;
         }
 
@@ -343,11 +437,11 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
         /// </summary>
         public void PowerDown()
         {
-            SendCommand(0x02);
+            SendCommand(CommandPowerOff);
             WaitReady();
 
-            SendCommand(0x07);
-            SendData(0xA5);
+            SendCommand(CommandDeepSleep);
+            SendData(DeepSleepCheckCode);
         }
 
         /// <summary>
@@ -390,13 +484,18 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
         /// <returns>True when the display is ready.</returns>
         public bool WaitReady(CancellationToken cancellationToken = default)
         {
+            Debug.WriteLine("WaitReady enter");
+
             if (!_useBusyPin)
             {
                 WaitMs(1500);
+                Debug.WriteLine("WaitReady fallback");
                 return true;
             }
 
-            return _busyPin.WaitUntilPinValueEquals(PinValue.High, cancellationToken);
+            bool result = _busyPin.WaitUntilPinValueEquals(PinValue.High, cancellationToken);
+            Debug.WriteLine("WaitReady busy result: " + result);
+            return result;
         }
 
         /// <summary>
@@ -413,22 +512,22 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
         /// </summary>
         private void PrepareForWrite()
         {
-            SendCommand(0x50);
+            SendCommand(CommandVcomAndDataInterval);
             SendData(0x97);
 
-            SendCommand(0x60);
+            SendCommand(CommandTcon);
             SendData(0x22);
 
-            SendCommand(0x61);
+            SendCommand(CommandTres);
             SendData(0x80, 0xFA);
 
-            SendCommand(0x82);
+            SendCommand(CommandVcom);
             SendData(0x13);
 
-            SendCommand(0x30);
+            SendCommand(CommandPll);
             SendData(0x1A);
 
-            SendCommand(0xE3);
+            SendCommand(CommandPws);
             SendData(0x88);
 
             SendCommand(0xF8);
@@ -445,6 +544,72 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13
 
             SendCommand(0xA8);
             SendData(0x3D);
+        }
+
+        /// <summary>
+        /// Configures controller settings required before a partial refresh.
+        /// </summary>
+        private void ConfigurePartialRefreshParameters()
+        {
+            PrepareForWrite();
+
+            SendCommand(CommandPanelSetting);
+            SendData(0xFF);
+
+            LoadPartialRefreshLuts();
+        }
+
+        /// <summary>
+        /// Loads partial-refresh LUT tables from MCU RAM.
+        /// </summary>
+        private void LoadPartialRefreshLuts()
+        {
+            SendCommand(CommandLutForVcom);
+            SendData(PartialLutVcom);
+
+            SendCommand(CommandLutW2W);
+            SendData(PartialLutW2W);
+
+            SendCommand(CommandLutB2W);
+            SendData(PartialLutB2W);
+
+            SendCommand(CommandLutW2B);
+            SendData(PartialLutW2B);
+
+            SendCommand(CommandLutB2B);
+            SendData(PartialLutB2B);
+        }
+
+        /// <summary>
+        /// Sets the RAM address counters to the start position.
+        /// </summary>
+        private void ResetRamPointers()
+        {
+            SendCommand(CommandRamXPointer);
+            SendData(0x01);
+
+            SendCommand(CommandRamYPointer);
+            SendData(0xF9, 0x00);
+        }
+
+        /// <summary>
+        /// Writes the previous and current frame buffers to display RAM for partial refresh.
+        /// </summary>
+        private void WriteFrameBufferForPartialRefresh()
+        {
+            SendCommand(CommandWriteOldImage);
+            SendData(_previousFrame);
+
+            SendCommand(CommandWriteNewImage);
+            SendData(FrameBuffer1bpp.Buffer);
+        }
+
+        /// <summary>
+        /// Copies the current frame buffer into the previous-frame buffer.
+        /// </summary>
+        private void SaveCurrentFrameAsPrevious()
+        {
+            Array.Copy(FrameBuffer1bpp.Buffer, _previousFrame, FrameBufferSize);
         }
 
         /// <summary>

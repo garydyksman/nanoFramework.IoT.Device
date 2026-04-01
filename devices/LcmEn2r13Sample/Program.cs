@@ -16,13 +16,14 @@ namespace LcmEn2r13Sample
     /// </summary>
     public class Program
     {
-        private const int PinMosi = 6;
-        private const int PinClk = 4;
-        private const int PinCs = 5;
-        private const int PinDc = 2;
-        private const int PinRst = 3;
+        private const int PinDisplayMosi = 6;
+        private const int PinDisplayClk = 4;
+        private const int PinDisplayMiso = 7;   // not used (half-duplex) but must be assigned
+        private const int PinDisplayCs = 5;
+        private const int PinDisplayDc = 2;
+        private const int PinDisplayRst = 3;
+        private const int PinDisplayBusy = 1;
         private const int PinVext = 18;
-        private const int PinBusy = -1;
 
         /// <summary>
         /// Application entry point.
@@ -36,25 +37,24 @@ namespace LcmEn2r13Sample
             Thread.Sleep(100);
             Debug.WriteLine("VEXT on");
 
-            Configuration.SetPinFunction(PinMosi, DeviceFunction.SPI2_MOSI);
-            Configuration.SetPinFunction(PinClk, DeviceFunction.SPI2_CLOCK);
-            Configuration.SetPinFunction(7, DeviceFunction.SPI2_MISO);
+            Configuration.SetPinFunction(PinDisplayMosi, DeviceFunction.SPI2_MOSI);
+            Configuration.SetPinFunction(PinDisplayClk, DeviceFunction.SPI2_CLOCK);
+            Configuration.SetPinFunction(PinDisplayMiso, DeviceFunction.SPI2_MISO);
 
-            var spiSettings = new SpiConnectionSettings(2, PinCs)
+            var displaySpi = SpiDevice.Create(new SpiConnectionSettings(2, PinDisplayCs)
             {
                 ClockFrequency = LcmEn2r13.SpiClockFrequency,
                 Mode = LcmEn2r13.SpiMode,
                 ChipSelectLineActiveState = false,
                 Configuration = SpiBusConfiguration.HalfDuplex,
                 DataFlow = DataFlow.MsbFirst
-            };
+            });
 
-            using SpiDevice spiDevice = SpiDevice.Create(spiSettings);
-            using var display = new LcmEn2r13(
-                spiDevice,
-                resetPin: PinRst,
-                busyPin: PinBusy,
-                dataCommandPin: PinDc,
+            var display = new LcmEn2r13(
+                displaySpi,
+                resetPin: PinDisplayRst,
+                busyPin: PinDisplayBusy,
+                dataCommandPin: PinDisplayDc,
                 gpioController: gpio,
                 shouldDispose: false);
 
@@ -68,7 +68,7 @@ namespace LcmEn2r13Sample
 
             using var gfx = new Graphics(display)
             {
-                DisplayRotation = Rotation.Degrees270Clockwise,
+                DisplayRotation = Rotation.Degrees90Clockwise,
                 FlipGlyphsHorizontally = true
             };
 
@@ -83,8 +83,26 @@ namespace LcmEn2r13Sample
             gfx.DrawCircle(55, 92, 12, Color.Black, true);
 
             display.EndFrameDraw();
-            display.PerformFullRefresh();
             Debug.WriteLine("Refresh done");
+
+            Thread.Sleep(3000);
+
+            // Clear only the regions that will change
+            gfx.DrawRectangle(4, 46, 30, 18, Color.White, true);
+            gfx.DrawRectangle(40, 46, 30, 18, Color.White, true);
+            gfx.DrawRectangle(8, 80, 24, 24, Color.White, true);
+            gfx.DrawRectangle(43, 80, 24, 24, Color.White, true);
+
+            // Draw new state
+            gfx.DrawRectangle(4, 46, 30, 18, Color.Black, true);
+            gfx.DrawRectangle(40, 46, 30, 18, Color.Black, false);
+            gfx.DrawCircle(20, 92, 12, Color.Black, true);
+            gfx.DrawCircle(55, 92, 12, Color.Black, false);
+
+            display.PerformPartialRefresh();
+            Debug.WriteLine("Partial Refresh done");
+
+            display.PowerDown();
 
             Thread.Sleep(Timeout.Infinite);
         }
