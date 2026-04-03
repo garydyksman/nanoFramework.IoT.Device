@@ -311,13 +311,14 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         public byte[] ReadBuffer(byte offset, byte length)
         {
             WaitBusy(5000);
-            byte[] tx = new byte[2 + length];
-            byte[] rx = new byte[2 + length];
+            byte[] tx = new byte[3 + length];  // +1
+            byte[] rx = new byte[3 + length];  // +1
             tx[0] = OpReadBuffer;
             tx[1] = offset;
+            // tx[2] = NOP (implicit zero)
             _spi.TransferFullDuplex(tx, rx);
             byte[] result = new byte[length];
-            Array.Copy(rx, 2, result, 0, length);
+            Array.Copy(rx, 3, result, 0, length);  // skip 3, not 2
             return result;
         }
 
