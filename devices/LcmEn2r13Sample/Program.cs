@@ -1,5 +1,5 @@
 ﻿using Iot.Device.EPaper;
-using Iot.Device.EPaper.Drivers.Jd796xx.LcmEn2r13;
+using Iot.Device.EPaper.Drivers.LcmEn2r13;
 using Iot.Device.EPaper.Enums;
 using Iot.Device.EPaper.Fonts;
 using nanoFramework.Hardware.Esp32;
@@ -16,15 +16,13 @@ namespace LcmEn2r13Sample
     /// </summary>
     public class Program
     {
-        private const int PinDisplayMosi = 6;
-        private const int PinDisplayClk = 4;
-        private const int PinDisplayMiso = 7;   // not used (half-duplex) but must be assigned
-        private const int PinDisplayCs = 5;
-        private const int PinDisplayDc = 2;
-        private const int PinDisplayRst = 3;
-        private const int PinDisplayBusy = 1;
+        private const int PinMosi = 6;
+        private const int PinClk = 4;
+        private const int PinCs = 5;
+        private const int PinDc = 2;
+        private const int PinRst = 3;
         private const int PinVext = 18;
-
+        private const int PinBusy = 1;
         /// <summary>
         /// Application entry point.
         /// </summary>
@@ -37,24 +35,26 @@ namespace LcmEn2r13Sample
             Thread.Sleep(100);
             Debug.WriteLine("VEXT on");
 
-            Configuration.SetPinFunction(PinDisplayMosi, DeviceFunction.SPI2_MOSI);
-            Configuration.SetPinFunction(PinDisplayClk, DeviceFunction.SPI2_CLOCK);
-            Configuration.SetPinFunction(PinDisplayMiso, DeviceFunction.SPI2_MISO);
+            Configuration.SetPinFunction(43, DeviceFunction.COM1_TX);
+            Configuration.SetPinFunction(44, DeviceFunction.COM1_RX);
+            Configuration.SetPinFunction(PinMosi, DeviceFunction.SPI2_MOSI);
+            Configuration.SetPinFunction(PinClk, DeviceFunction.SPI2_CLOCK);
 
-            var displaySpi = SpiDevice.Create(new SpiConnectionSettings(2, PinDisplayCs)
+            var spiSettings = new SpiConnectionSettings(2, PinCs)
             {
                 ClockFrequency = LcmEn2r13.SpiClockFrequency,
                 Mode = LcmEn2r13.SpiMode,
                 ChipSelectLineActiveState = false,
                 Configuration = SpiBusConfiguration.HalfDuplex,
                 DataFlow = DataFlow.MsbFirst
-            });
+            };
 
-            var display = new LcmEn2r13(
-                displaySpi,
-                resetPin: PinDisplayRst,
-                busyPin: PinDisplayBusy,
-                dataCommandPin: PinDisplayDc,
+            using SpiDevice spiDevice = SpiDevice.Create(spiSettings);
+            using var display = new LcmEn2r13(
+                spiDevice,
+                resetPin: PinRst,
+                busyPin: PinBusy,
+                dataCommandPin: PinDc,
                 gpioController: gpio,
                 shouldDispose: false);
 
@@ -68,43 +68,41 @@ namespace LcmEn2r13Sample
 
             using var gfx = new Graphics(display)
             {
-                DisplayRotation = Rotation.Degrees90Clockwise,
+                DisplayRotation = Rotation.Degrees270Clockwise,
                 FlipGlyphsHorizontally = true
             };
 
-            display.BeginFrameDraw();
+            bool fillFirstShape = false;
+            bool firstFrame = true;
+            while (true)
+            {
+                display.BeginFrameDraw();
 
-            gfx.DrawText("HELLO E213", font, 4, 6, Color.Black);
-            gfx.DrawText("nanoFramework", font, 4, 22, Color.Black);
-            gfx.DrawLine(0, 38, 120, 38, Color.Black);
-            gfx.DrawRectangle(4, 46, 30, 18, Color.Black, false);
-            gfx.DrawRectangle(40, 46, 30, 18, Color.Black, true);
-            gfx.DrawCircle(20, 92, 12, Color.Black, false);
-            gfx.DrawCircle(55, 92, 12, Color.Black, true);
+                gfx.DrawText("HELLO E213", font, 4, 6, Color.Black);
+                gfx.DrawText("nanoFramework", font, 4, 22, Color.Black);
+                gfx.DrawLine(0, 38, 120, 38, Color.Black);
 
-            display.EndFrameDraw();
-            Debug.WriteLine("Refresh done");
+                gfx.DrawRectangle(4, 46, 30, 18, Color.Black, fillFirstShape);
+                gfx.DrawRectangle(40, 46, 30, 18, Color.Black, !fillFirstShape);
+                gfx.DrawCircle(20, 92, 12, Color.Black, fillFirstShape);
+                gfx.DrawCircle(55, 92, 12, Color.Black, !fillFirstShape);
 
-            Thread.Sleep(3000);
+                display.Flush();
+                if (firstFrame)
+                {
+                    display.PerformFullRefresh();
+                    firstFrame = false;
+                    Debug.WriteLine("Full refresh done");
+                }
+                else
+                {
+                    display.PerformPartialRefresh();
+                    Debug.WriteLine("Partial refresh done");
+                }
 
-            // Clear only the regions that will change
-            gfx.DrawRectangle(4, 46, 30, 18, Color.White, true);
-            gfx.DrawRectangle(40, 46, 30, 18, Color.White, true);
-            gfx.DrawRectangle(8, 80, 24, 24, Color.White, true);
-            gfx.DrawRectangle(43, 80, 24, 24, Color.White, true);
-
-            // Draw new state
-            gfx.DrawRectangle(4, 46, 30, 18, Color.Black, true);
-            gfx.DrawRectangle(40, 46, 30, 18, Color.Black, false);
-            gfx.DrawCircle(20, 92, 12, Color.Black, true);
-            gfx.DrawCircle(55, 92, 12, Color.Black, false);
-
-            display.PerformPartialRefresh();
-            Debug.WriteLine("Partial Refresh done");
-
-            display.PowerDown();
-
-            Thread.Sleep(Timeout.Infinite);
+                fillFirstShape = !fillFirstShape;
+                Thread.Sleep(1000);
+            }
         }
     }
 }
