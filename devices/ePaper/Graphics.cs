@@ -204,7 +204,7 @@ namespace Iot.Device.EPaper
         /// <param name="rotate"><see langword="true"/> to rotate the bitmap using the current <see cref="DisplayRotation"/>; otherwise, the bitmap is drawn without additional rotation.</param>
         public void DrawBitmap(IFrameBuffer bitmap, System.Drawing.Point start, bool rotate = false)
         {
-            if (DisplayRotation == Rotation.Default && !rotate)
+            if (!rotate || DisplayRotation == Rotation.Default)
             {
                 EPaperDisplay.FrameBuffer.WriteBuffer(bitmap, destinationStart: start);
                 return;

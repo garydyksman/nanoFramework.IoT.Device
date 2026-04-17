@@ -28,7 +28,7 @@ namespace LcmEn2r13Sample
         /// </summary>
         public static void Main()
         {
-            var gpio = new GpioController();
+            using var gpio = new GpioController();
 
             gpio.OpenPin(PinVext, PinMode.Output);
             gpio.Write(PinVext, PinValue.High);
@@ -61,9 +61,6 @@ namespace LcmEn2r13Sample
             display.PowerOn();
             Debug.WriteLine("Power on done");
 
-            display.Clear(triggerPageRefresh: true);
-            Debug.WriteLine("Clear done");
-
             var font = new Font8x12();
 
             using var gfx = new Graphics(display)
@@ -73,36 +70,36 @@ namespace LcmEn2r13Sample
             };
 
             bool fillFirstShape = false;
-            bool firstFrame = true;
+
+            display.BeginFrameDraw();
+            DrawDemoFrame(gfx, font, fillFirstShape);
+            display.EndFrameDraw();
+            display.PerformFullRefresh();
+            Debug.WriteLine("Full refresh done");
+
             while (true)
             {
-                display.BeginFrameDraw();
-
-                gfx.DrawText("HELLO E213", font, 4, 6, Color.Black);
-                gfx.DrawText("nanoFramework", font, 4, 22, Color.Black);
-                gfx.DrawLine(0, 38, 120, 38, Color.Black);
-
-                gfx.DrawRectangle(4, 46, 30, 18, Color.Black, fillFirstShape);
-                gfx.DrawRectangle(40, 46, 30, 18, Color.Black, !fillFirstShape);
-                gfx.DrawCircle(20, 92, 12, Color.Black, fillFirstShape);
-                gfx.DrawCircle(55, 92, 12, Color.Black, !fillFirstShape);
-
-                display.Flush();
-                if (firstFrame)
-                {
-                    display.PerformFullRefresh();
-                    firstFrame = false;
-                    Debug.WriteLine("Full refresh done");
-                }
-                else
-                {
-                    display.PerformPartialRefresh();
-                    Debug.WriteLine("Partial refresh done");
-                }
+                Thread.Sleep(1000);
 
                 fillFirstShape = !fillFirstShape;
-                Thread.Sleep(1000);
+
+                display.BeginFrameDraw();
+                DrawDemoFrame(gfx, font, fillFirstShape);
+                display.EndFrameDraw();
+                display.PerformPartialRefresh();
+                Debug.WriteLine("Partial refresh done");
             }
+        }
+
+        private static void DrawDemoFrame(Graphics gfx, Font8x12 font, bool fillFirstShape)
+        {
+            gfx.DrawText("HELLO E213", font, 4, 6, Color.Black);
+            gfx.DrawText("nanoFramework", font, 4, 22, Color.Black);
+            gfx.DrawLine(0, 38, 120, 38, Color.Black);
+            gfx.DrawRectangle(4, 46, 30, 18, Color.Black, fillFirstShape);
+            gfx.DrawRectangle(40, 46, 30, 18, Color.Black, !fillFirstShape);
+            gfx.DrawCircle(20, 92, 12, Color.Black, fillFirstShape);
+            gfx.DrawCircle(55, 92, 12, Color.Black, !fillFirstShape);
         }
     }
 }

@@ -17,6 +17,8 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
     /// <remarks>
     /// The visible panel is 122x250 pixels, while the controller RAM is byte-aligned to 128x250 pixels.
     /// This driver exposes the native controller RAM geometry so drawing and frame buffer layout remain consistent.
+    /// The initialization and partial-refresh sequences are based on the LCMEN2R13EFC1 panel
+    /// datasheet together with Heltec's HT_lCMEN2R13EFC1.h and HT_lCMEN2R13EFC1_LUT.h reference files.
     /// </remarks>
     public class LcmEn2r13 : IEPaperDisplay
     {
@@ -45,6 +47,18 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
         /// </summary>
         public const SpiMode SpiMode = System.Device.Spi.SpiMode.Mode0;
 
+        // FITI/internal tuning commands mirrored from Heltec's HT_lCMEN2R13EFC1 reference driver.
+        private const byte VendorCommandFitIInternalCode = 0x4D;
+        private const byte VendorCommandAnalogBlockControl = 0xA9;
+        private const byte VendorCommandFitIInternalControl = 0xF3;
+        private const byte VendorCommandUnknownF8 = 0xF8;
+        private const byte VendorCommandUnknownB3 = 0xB3;
+        private const byte VendorCommandUnknownB4 = 0xB4;
+        private const byte VendorCommandUnknownAa = 0xAA;
+        private const byte VendorCommandUnknownA8 = 0xA8;
+        private const byte VendorCommandPowerSaving = 0xE3;
+
+        // Partial refresh LUT values copied from Heltec's HT_lCMEN2R13EFC1_LUT.h.
         private static readonly byte[] PartialLutVcom =
         {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -188,12 +202,11 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
         }
 
         /// <summary>
-        /// Ends the frame draw operation by flushing the frame buffer and refreshing the panel.
+        /// Ends the frame draw operation by flushing the frame buffer.
         /// </summary>
         public void EndFrameDraw()
         {
             Flush();
-            PerformFullRefresh();
         }
 
         /// <summary>
@@ -254,6 +267,9 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
         /// <returns>True if the refresh command sequence was issued successfully.</returns>
         public bool PerformPartialRefresh()
         {
+            // Heltec's dis_img_Partial_Refresh() sequence switches the controller to register-LUT
+            // mode, configures the partial window, loads the LUT tables, then triggers a refresh
+            // using the old/new image RAM contents previously written by Flush().
             SendCommand((byte)Command.PanelSetting);
             SendData(0xDF, 0x08);
 
@@ -310,16 +326,17 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
             SendCommand((byte)Command.DisplayRefresh);
             WaitReady();
 
+            // Initialization sequence derived from Heltec's sendInitCommands().
             SendCommand((byte)Command.PanelSetting);
             SendData(0xDF);
 
-            SendCommand(0x4D);
+            SendCommand(VendorCommandFitIInternalCode);
             SendData(0x55, 0x00, 0x00);
 
-            SendCommand(0xA9);
+            SendCommand(VendorCommandAnalogBlockControl);
             SendData(0x25, 0x00, 0x00);
 
-            SendCommand(0xF3);
+            SendCommand(VendorCommandFitIInternalControl);
             SendData(0x0A, 0x00, 0x00);
 
             SendCommand((byte)Command.SetXAddressRange);
@@ -480,23 +497,23 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
             SendCommand((byte)Command.PLLControl);
             SendData(0x1A);
 
-            // Vendor-provided controller tuning sequence.
-            SendCommand(0xE3);
+            // Controller tuning values taken from Heltec's INIT_JD79656_mcu() helper.
+            SendCommand(VendorCommandPowerSaving);
             SendData(0x88);
 
-            SendCommand(0xF8);
+            SendCommand(VendorCommandUnknownF8);
             SendData(0x80);
 
-            SendCommand(0xB3);
+            SendCommand(VendorCommandUnknownB3);
             SendData(0x42);
 
-            SendCommand(0xB4);
+            SendCommand(VendorCommandUnknownB4);
             SendData(0x28);
 
-            SendCommand(0xAA);
+            SendCommand(VendorCommandUnknownAa);
             SendData(0xB7);
 
-            SendCommand(0xA8);
+            SendCommand(VendorCommandUnknownA8);
             SendData(0x3D);
         }
 
@@ -563,8 +580,6 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
 
                     _dataCommandPin?.Dispose();
                     _dataCommandPin = null;
-
-                    _spiDevice?.Dispose();
 
                     if (_shouldDispose)
                     {
