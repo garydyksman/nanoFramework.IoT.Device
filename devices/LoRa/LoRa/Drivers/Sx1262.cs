@@ -1,10 +1,10 @@
-﻿// Copyright (c) 2024 The nanoFramework project contributors
-// See LICENSE file in the project root for full license information.
+﻿// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Diagnostics;
 using System.Device.Gpio;
 using System.Device.Spi;
-using System.Diagnostics;
 using System.Threading;
 
 namespace Iot.Device.LoRa.Drivers.Sx1262
@@ -57,6 +57,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         private readonly SpiDevice _spi;
         private readonly GpioController _gpio;
         private readonly bool _shouldDispose;
+        private readonly bool _disposeSpi;
 
         private GpioPin _resetPin;
         private GpioPin _busyPin;
@@ -128,13 +129,15 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <param name="dio1Pin">GPIO pin number for DIO1 (IRQ).</param>
         /// <param name="gpioController">Optional shared GPIO controller; a new instance is created when null.</param>
         /// <param name="shouldDispose">True to dispose the GPIO controller when this instance is disposed.</param>
+        /// <param name="disposeSpi">True to dispose <paramref name="spiDevice" /> when this instance is disposed (use false when the bus is shared).</param>
         public Sx1262(
             SpiDevice spiDevice,
             int resetPin,
             int busyPin,
             int dio1Pin,
             GpioController gpioController = null,
-            bool shouldDispose = true)
+            bool shouldDispose = true,
+            bool disposeSpi = false)
         {
             if (spiDevice == null)
             {
@@ -144,6 +147,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             _spi = spiDevice;
             _gpio = gpioController == null ? new GpioController() : gpioController;
             _shouldDispose = shouldDispose || gpioController == null;
+            _disposeSpi = disposeSpi;
 
             _resetPin = _gpio.OpenPin(resetPin, PinMode.Output);
             _busyPin = _gpio.OpenPin(busyPin, PinMode.Input);
@@ -259,14 +263,19 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <inheritdoc/>
         public void Send(byte[] payload, int timeoutMs)
         {
-            if (payload == null || payload.Length == 0)
+            if (payload == null)
             {
-                throw new ArgumentException("Payload cannot be null or empty");
+                throw new ArgumentNullException(nameof(payload));
+            }
+
+            if (payload.Length == 0)
+            {
+                throw new ArgumentException("Payload cannot be empty", nameof(payload));
             }
 
             if (payload.Length > 255)
             {
-                throw new ArgumentException("Payload exceeds 255 bytes");
+                throw new ArgumentException("Payload exceeds 255 bytes", nameof(payload));
             }
 
             if (_pollThread != null && Thread.CurrentThread == _pollThread)
@@ -535,6 +544,11 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             {
                 _dio1Pin.Dispose();
                 _dio1Pin = null;
+            }
+
+            if (_disposeSpi && _spi != null)
+            {
+                _spi.Dispose();
             }
 
             if (_shouldDispose && _gpio != null)
