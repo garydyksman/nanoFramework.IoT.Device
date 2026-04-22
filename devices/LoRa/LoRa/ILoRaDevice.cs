@@ -5,85 +5,46 @@ using System;
 
 namespace Iot.Device.LoRa
 {
-    /// <summary>Received LoRa packet.</summary>
-    public sealed class LoRaMessage
-    {
-        /// <summary>Raw payload bytes.</summary>
-        public byte[] Payload { get; }
-
-        /// <summary>Signal RSSI in dBm (typically -30 to -120).</summary>
-        public int Rssi { get; }
-
-        /// <summary>Signal-to-noise ratio in dB.</summary>
-        public float Snr { get; }
-
-        /// <summary>Creates a new LoRaMessage.</summary>
-        public LoRaMessage(byte[] payload, int rssi, float snr)
-        {
-            Payload = payload;
-            Rssi = rssi;
-            Snr = snr;
-        }
-    }
-
     /// <summary>
-    /// Delegate for packet received events.
-    /// nanoFramework does not support generic delegates (EventHandler&lt;T&gt;).
-    /// </summary>
-    public delegate void PacketReceivedHandler(object sender, LoRaMessage message);
-
-    /// <summary>
-    /// Abstraction for a LoRa radio transceiver.
-    /// Implement this interface for each chip variant (SX1262, SX1276, RFM95, …).
+    /// <para>Abstraction for a LoRa radio transceiver.</para>
+    /// <para>Implement this interface for each chip variant (SX1262, SX1276, RFM95, and similar).</para>
     /// </summary>
     public interface ILoRaDevice : IDisposable
     {
-        // ------------------------------------------------------------------
-        // Lifecycle
-        // ------------------------------------------------------------------
-
         /// <summary>
-        /// Performs a hardware reset and waits for the chip to become ready.
-        /// Must be the first call after construction.
+        /// <para>Performs a hardware reset and waits for the chip to become ready.</para>
+        /// <para>Must be the first call after construction.</para>
         /// </summary>
         void Reset();
 
         /// <summary>
-        /// Applies the full initialisation sequence.
-        /// Call once after <see cref="Reset"/>.
+        /// Applies the full initialisation sequence. Call once after <see cref="ILoRaDevice.Reset" />.
         /// </summary>
         void Initialise();
 
-        // ------------------------------------------------------------------
-        // Radio configuration
-        // ------------------------------------------------------------------
-
-        /// <summary>Sets the RF carrier frequency in Hz (e.g. 868_000_000).</summary>
+        /// <summary>
+        /// Sets the RF carrier frequency in Hz (for example 868000000).
+        /// </summary>
+        /// <param name="frequencyHz">Carrier frequency in hertz.</param>
         void SetRfFrequency(uint frequencyHz);
 
-        // ------------------------------------------------------------------
-        // Transmit
-        // ------------------------------------------------------------------
-
         /// <summary>
-        /// Sends <paramref name="payload"/> over LoRa.
-        /// Blocks until TxDone or <paramref name="timeoutMs"/> elapses.
+        /// Sends <paramref name="payload" /> over LoRa, blocking until TxDone or until <paramref name="timeoutMs" /> elapses.
         /// </summary>
-        /// <exception cref="TimeoutException">TX did not complete in time.</exception>
+        /// <param name="payload">The bytes to transmit.</param>
+        /// <param name="timeoutMs">Maximum time to wait for completion, in milliseconds.</param>
+        /// <exception cref="TimeoutException">Thrown when TX does not complete in time.</exception>
         void Send(byte[] payload, int timeoutMs);
 
-        // ------------------------------------------------------------------
-        // Receive
-        // ------------------------------------------------------------------
-
         /// <summary>
-        /// Starts a background thread that polls for incoming packets and
-        /// raises <see cref="PacketReceived"/> for each valid frame.
-        /// Wire up <see cref="PacketReceived"/> before calling this.
+        /// <para>Starts a background thread that polls for incoming packets and raises <see cref="ILoRaDevice.PacketReceived" /> for each valid frame.</para>
+        /// <para>Wire up <see cref="ILoRaDevice.PacketReceived" /> before calling this method.</para>
         /// </summary>
         void StartPolling();
 
-        /// <summary>Signals the poll thread to stop and blocks until it exits.</summary>
+        /// <summary>
+        /// Signals the poll thread to stop and blocks until it exits.
+        /// </summary>
         void StopPolling();
 
         /// <summary>

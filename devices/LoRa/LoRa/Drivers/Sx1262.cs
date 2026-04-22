@@ -5,29 +5,21 @@ using System;
 using System.Device.Gpio;
 using System.Device.Spi;
 using System.Threading;
+
 using Iot.Device.LoRa;
 
 namespace Iot.Device.LoRa.Drivers.Sx1262
 {
     /// <summary>
-    /// Low-level SX1262 LoRa radio driver.
-    /// Heltec Vision Master E213 (HT-VME213) default pin mapping:
-    ///   NSS  = 8,  SCK  = 9,  MOSI = 10, MISO = 11
-    ///   RST  = 12, BUSY = 13, DIO1 = 14
-    ///
-    /// Build steps:
-    ///   Step 1 ✅ — Reset + WaitBusy + GetStatus
-    ///   Step 2 ✅ — Full init sequence (TCXO, frequency, modulation)
-    ///   Step 3 ✅ — TX: WriteBuffer + SetTx + TxDone via DIO1
-    ///   Step 4 ✅ — RX: SetRx + RxDone via DIO1 + ReadBuffer
-    ///   Step 5    — Two-device ping/pong
+    /// <para>Low-level SX1262 LoRa radio driver.</para>
+    /// <para>Heltec Vision Master E213 (HT-VME213) default pin mapping: NSS = 8, SCK = 9, MOSI = 10, MISO = 11, RST = 12, BUSY = 13, DIO1 = 14.</para>
+    /// <para>Supports reset, initialization, TX, RX polling, and buffer access.</para>
     /// </summary>
     public class Sx1262 : ILoRaDevice
     {
         // ---------------------------------------------------------------
         // Op-codes (datasheet section 11.1)
         // ---------------------------------------------------------------
-
         private const byte OpGetStatus = 0xC0;
         private const byte OpSetStandby = 0x80;
         private const byte OpSetSleep = 0x84;
@@ -55,32 +47,14 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         // ---------------------------------------------------------------
         // IRQ bit masks (datasheet section 13.3.2)
         // ---------------------------------------------------------------
-
-        public const ushort IrqTxDone = 0x0001;
-        public const ushort IrqRxDone = 0x0002;
-        public const ushort IrqPreamble = 0x0004;
-        public const ushort IrqSyncWord = 0x0008;
-        public const ushort IrqHeaderValid = 0x0010;
-        public const ushort IrqHeaderErr = 0x0020;
-        public const ushort IrqCrcErr = 0x0040;
-        public const ushort IrqCadDone = 0x0080;
-        public const ushort IrqCadDetected = 0x0100;
-        public const ushort IrqTimeout = 0x0200;
-
-        // ---------------------------------------------------------------
-        // Chip mode constants (status bits [6:4])
-        // ---------------------------------------------------------------
-
-        public const byte ChipModeStandbyRc = 0x02;
-        public const byte ChipModeStandbyXosc = 0x03;
-        public const byte ChipModeFs = 0x04;
-        public const byte ChipModeRx = 0x05;
-        public const byte ChipModeTx = 0x06;
+        private const ushort IrqTxDone = 0x0001;
+        private const ushort IrqRxDone = 0x0002;
+        private const ushort IrqCrcErr = 0x0040;
+        private const ushort IrqTimeout = 0x0200;
 
         // ---------------------------------------------------------------
         // Hardware
         // ---------------------------------------------------------------
-
         private readonly SpiDevice _spi;
         private readonly GpioController _gpio;
         private readonly bool _shouldDispose;
@@ -94,22 +68,67 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         // ---------------------------------------------------------------
         // RX poll thread
         // ---------------------------------------------------------------
-
         private Thread _pollThread;
         private bool _stopPolling;
 
         // ---------------------------------------------------------------
-        // Events
-        // ---------------------------------------------------------------
+        // Static helpers (SA1204: public static before non-static public)
+        //// ---------------------------------------------------------------
 
-        /// <inheritdoc/>
-        public event PacketReceivedHandler PacketReceived;
+        /// <summary>
+        /// Decodes chip mode bits [6:4] from a raw status byte.
+        /// </summary>
+        /// <param name="status">The status byte returned by the chip.</param>
+        /// <returns>A short label describing the chip mode.</returns>
+        public static string DecodeChipMode(byte status)
+        {
+            switch ((byte)((status >> 4) & 0x07))
+            {
+                case 0x02:
+                {
+                    return "STDBY_RC";
+                }
+
+                case 0x03:
+                {
+                    return "STDBY_XOSC";
+                }
+
+                case 0x04:
+                {
+                    return "FS";
+                }
+
+                case 0x05:
+                {
+                    return "RX";
+                }
+
+                case 0x06:
+                {
+                    return "TX";
+                }
+
+                default:
+                {
+                    return "UNKNOWN";
+                }
+            }
+        }
 
         // ---------------------------------------------------------------
         // Construction
-        // ---------------------------------------------------------------
+        //// ---------------------------------------------------------------
 
-        /// <summary>Creates a new Sx1262 driver instance.</summary>
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Sx1262" /> class.
+        /// </summary>
+        /// <param name="spiDevice">The SPI device for the radio.</param>
+        /// <param name="resetPin">GPIO pin number for reset (active low).</param>
+        /// <param name="busyPin">GPIO pin number for the BUSY line.</param>
+        /// <param name="dio1Pin">GPIO pin number for DIO1 (IRQ).</param>
+        /// <param name="gpioController">Optional shared GPIO controller; a new instance is created when null.</param>
+        /// <param name="shouldDispose">True to dispose the GPIO controller when this instance is disposed.</param>
         public Sx1262(
             SpiDevice spiDevice,
             int resetPin,
@@ -118,7 +137,10 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             GpioController gpioController = null,
             bool shouldDispose = true)
         {
-            if (spiDevice == null) throw new ArgumentNullException("spiDevice");
+            if (spiDevice == null)
+            {
+                throw new ArgumentNullException(nameof(spiDevice));
+            }
 
             _spi = spiDevice;
             _gpio = gpioController == null ? new GpioController() : gpioController;
@@ -132,8 +154,15 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         }
 
         // ---------------------------------------------------------------
-        // Step 1 ✅ — Reset + BUSY + GetStatus
+        // Events
+        //// ---------------------------------------------------------------
+
+        /// <inheritdoc/>
+        public event PacketReceivedHandler PacketReceived;
+
         // ---------------------------------------------------------------
+        // Step 1 — Reset + BUSY + GetStatus
+        //// ---------------------------------------------------------------
 
         /// <inheritdoc/>
         public void Reset()
@@ -147,7 +176,10 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             WaitBusy(5000);
         }
 
-        /// <summary>Blocks until BUSY goes low or timeout expires.</summary>
+        /// <summary>
+        /// Blocks until BUSY goes low or the timeout expires.
+        /// </summary>
+        /// <param name="timeoutMs">Maximum time to wait, in milliseconds.</param>
         public void WaitBusy(int timeoutMs)
         {
             int elapsed = 0;
@@ -155,11 +187,16 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             {
                 Thread.Sleep(1);
                 if (++elapsed >= timeoutMs)
+                {
                     throw new TimeoutException("SX1262 BUSY timeout");
+                }
             }
         }
 
-        /// <summary>Reads the chip status byte.</summary>
+        /// <summary>
+        /// Reads the chip status byte.
+        /// </summary>
+        /// <returns>The second byte of the status SPI transaction.</returns>
         public byte GetStatus()
         {
             WaitBusy(5000);
@@ -169,23 +206,9 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             return rx[1];
         }
 
-        /// <summary>Decodes chip mode bits [6:4] from a raw status byte.</summary>
-        public static string DecodeChipMode(byte status)
-        {
-            switch ((byte)((status >> 4) & 0x07))
-            {
-                case 0x02: return "STDBY_RC";
-                case 0x03: return "STDBY_XOSC";
-                case 0x04: return "FS";
-                case 0x05: return "RX";
-                case 0x06: return "TX";
-                default: return "UNKNOWN";
-            }
-        }
-
         // ---------------------------------------------------------------
-        // Step 2 ✅ — Full init sequence
-        // ---------------------------------------------------------------
+        // Step 2 — Full init sequence
+        //// ---------------------------------------------------------------
 
         /// <inheritdoc/>
         public void Initialise()
@@ -203,60 +226,62 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             WriteCommand(OpSetModulationParams, new byte[] { 0x07, 0x04, 0x01, 0x00 });
             WriteCommand(OpSetPacketParams, new byte[] { 0x00, 0x08, 0x00, 0xFF, 0x01, 0x00 });
             WriteCommand(OpSetBufferBaseAddr, new byte[] { 0x00, 0x00 });
-            WriteCommand(OpSetDioIrqParams, new byte[]
-            {
-                0x02, 0x03,   // irqMask  — TxDone | RxDone | Timeout
-                0x02, 0x03,   // dio1Mask
-                0x00, 0x00,   // dio2Mask
-                0x00, 0x00    // dio3Mask
-            });
+            byte[] irqParams = new byte[] { 0x02, 0x03, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00 };
+            WriteCommand(OpSetDioIrqParams, irqParams);
         }
 
         /// <inheritdoc/>
         public void SetRfFrequency(uint frequencyHz)
         {
             ulong frf = ((ulong)frequencyHz << 25) / 32000000UL;
-            WriteCommand(OpSetRfFrequency, new byte[]
+            byte[] rfFreqBytes = new byte[]
             {
                 (byte)(frf >> 24),
                 (byte)(frf >> 16),
                 (byte)(frf >> 8),
-                (byte) frf
-            });
+                (byte)frf
+            };
+            WriteCommand(OpSetRfFrequency, rfFreqBytes);
         }
 
         /// <summary>
         /// Puts the chip into continuous RX mode (timeout = 0xFFFFFF).
-        /// Called automatically by StartPolling() and after every TX.
         /// </summary>
+        /// <remarks>Called automatically by <see cref="Sx1262.StartPolling" /> and after transmit.</remarks>
         public void StartReceiving()
         {
             WriteCommand(OpSetRx, new byte[] { 0xFF, 0xFF, 0xFF });
         }
 
         // ---------------------------------------------------------------
-        // Step 3 ✅ — TX
-        // ---------------------------------------------------------------
+        // Step 3 — TX
+        //// ---------------------------------------------------------------
 
         /// <inheritdoc/>
         public void Send(byte[] payload, int timeoutMs)
         {
             if (payload == null || payload.Length == 0)
+            {
                 throw new ArgumentException("Payload cannot be null or empty");
-            if (payload.Length > 255)
-                throw new ArgumentException("Payload exceeds 255 bytes");
+            }
 
-            // Take SPI ownership away from the poll thread
+            if (payload.Length > 255)
+            {
+                throw new ArgumentException("Payload exceeds 255 bytes");
+            }
+
+            // Take SPI ownership away from the poll thread.
             StopPolling();
 
             try
             {
-                WriteCommand(OpSetPacketParams, new byte[]
+                byte[] packetParams = new byte[]
                 {
                     0x00, 0x08, 0x00,
                     (byte)payload.Length,
                     0x01, 0x00
-                });
+                };
+                WriteCommand(OpSetPacketParams, packetParams);
 
                 WriteBuffer(0x00, payload);
                 WriteCommand(OpSetTx, new byte[] { 0x00, 0x00, 0x00 });
@@ -266,25 +291,36 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 {
                     Thread.Sleep(1);
                     if (++elapsed >= timeoutMs)
+                    {
                         throw new TimeoutException("SX1262 TxDone timeout");
+                    }
                 }
 
                 ushort irq = GetIrqStatus();
                 ClearIrqStatus(0xFFFF);
 
                 if ((irq & IrqTimeout) != 0)
+                {
                     throw new TimeoutException("SX1262 TX timeout IRQ");
+                }
+
                 if ((irq & IrqTxDone) == 0)
+                {
                     throw new InvalidOperationException("Unexpected IRQ after TX");
+                }
             }
             finally
             {
-                // Always restart RX polling, even if TX threw
+                // Always restart RX polling, even if TX threw.
                 StartPolling();
             }
         }
 
-        /// <summary>Writes bytes into the SX1262 data buffer at the given offset.</summary>
+        /// <summary>
+        /// Writes bytes into the SX1262 data buffer at the given offset.
+        /// </summary>
+        /// <param name="offset">Start offset in the chip buffer.</param>
+        /// <param name="data">Payload bytes to write.</param>
         public void WriteBuffer(byte offset, byte[] data)
         {
             WaitBusy(5000);
@@ -296,10 +332,14 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         }
 
         // ---------------------------------------------------------------
-        // Step 4 ✅ — RX
-        // ---------------------------------------------------------------
+        // Step 4 — RX
+        //// ---------------------------------------------------------------
 
-        /// <summary>Returns the RX buffer status after RxDone fires on DIO1.</summary>
+        /// <summary>
+        /// Gets the RX buffer status after RxDone fires on DIO1.
+        /// </summary>
+        /// <param name="payloadLength">Receives the length of the received payload.</param>
+        /// <param name="bufferOffset">Receives the buffer offset of the payload.</param>
         public void GetRxBufferStatus(out byte payloadLength, out byte bufferOffset)
         {
             byte[] r = ReadCommand(OpGetRxBufferStatus, 2);
@@ -307,22 +347,30 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             bufferOffset = r[1];
         }
 
-        /// <summary>Reads length bytes from the chip RX buffer starting at offset.</summary>
+        /// <summary>
+        /// Reads <paramref name="length" /> bytes from the chip RX buffer starting at <paramref name="offset" />.
+        /// </summary>
+        /// <param name="offset">Offset in the RX buffer.</param>
+        /// <param name="length">Number of bytes to read.</param>
+        /// <returns>A copy of the received bytes.</returns>
         public byte[] ReadBuffer(byte offset, byte length)
         {
             WaitBusy(5000);
-            byte[] tx = new byte[3 + length];  // +1
-            byte[] rx = new byte[3 + length];  // +1
+            byte[] tx = new byte[3 + length];
+            byte[] rx = new byte[3 + length];
             tx[0] = OpReadBuffer;
             tx[1] = offset;
-            // tx[2] = NOP (implicit zero)
             _spi.TransferFullDuplex(tx, rx);
             byte[] result = new byte[length];
-            Array.Copy(rx, 3, result, 0, length);  // skip 3, not 2
+            Array.Copy(rx, 3, result, 0, length);
             return result;
         }
 
-        /// <summary>Gets signal quality for the last received packet.</summary>
+        /// <summary>
+        /// Gets the signal quality for the last received packet.
+        /// </summary>
+        /// <param name="rssi">Receives RSSI in dBm.</param>
+        /// <param name="snr">Receives SNR in dB.</param>
         public void GetPacketStatus(out int rssi, out float snr)
         {
             byte[] r = ReadCommand(OpGetPacketStatus, 3);
@@ -331,17 +379,28 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         }
 
         /// <summary>
-        /// Reads IRQ flags, pulls the packet from the buffer, fires PacketReceived,
-        /// then returns to RX mode. Returns null on CRC error or timeout.
+        /// Reads IRQ flags, pulls the packet from the buffer, raises <see cref="Sx1262.PacketReceived" />, then returns to RX mode.
         /// </summary>
+        /// <returns>A <see cref="LoRaMessage" /> on success; null on CRC error or timeout.</returns>
         public LoRaMessage HandleRxDone()
         {
             ushort irq = GetIrqStatus();
             ClearIrqStatus(0xFFFF);
 
-            if ((irq & IrqTimeout) != 0) return null;
-            if ((irq & IrqCrcErr) != 0) return null;
-            if ((irq & IrqRxDone) == 0) return null;
+            if ((irq & IrqTimeout) != 0)
+            {
+                return null;
+            }
+
+            if ((irq & IrqCrcErr) != 0)
+            {
+                return null;
+            }
+
+            if ((irq & IrqRxDone) == 0)
+            {
+                return null;
+            }
 
             GetRxBufferStatus(out byte length, out byte offset);
             byte[] payload = ReadBuffer(offset, length);
@@ -352,19 +411,24 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             StartReceiving();
 
             if (PacketReceived != null)
+            {
                 PacketReceived(this, msg);
+            }
 
             return msg;
         }
 
         // ---------------------------------------------------------------
-        // RX poll thread — nanoFramework safe
-        // ---------------------------------------------------------------
+        // RX poll thread (nanoFramework safe)
+        //// ---------------------------------------------------------------
 
         /// <inheritdoc/>
         public void StartPolling()
         {
-            if (_pollThread != null) return;
+            if (_pollThread != null)
+            {
+                return;
+            }
 
             _stopPolling = false;
             StartReceiving();
@@ -384,44 +448,85 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             }
         }
 
-        private void PollLoop()
-        {
-            while (!_stopPolling)
-            {
-                if (IsDio1High)
-                    HandleRxDone();
-                else
-                    Thread.Sleep(5);
-            }
-        }
+        /// <summary>
+        /// Gets a value indicating whether DIO1 is high (an IRQ is pending).
+        /// </summary>
+        public bool IsDio1High => _dio1Pin.Read() == PinValue.High;
 
-        // ---------------------------------------------------------------
-        // IRQ helpers
-        // ---------------------------------------------------------------
-
-        /// <summary>Reads the IRQ status register.</summary>
+        /// <summary>
+        /// Gets the current IRQ status flags from the chip.
+        /// </summary>
+        /// <returns>The 16-bit IRQ status flags.</returns>
         public ushort GetIrqStatus()
         {
             byte[] r = ReadCommand(OpGetIrqStatus, 2);
             return (ushort)((r[0] << 8) | r[1]);
         }
 
-        /// <summary>Clears IRQ flags after handling.</summary>
+        /// <summary>
+        /// Clears IRQ flags after handling.
+        /// </summary>
+        /// <param name="mask">Bits to clear in the IRQ status register.</param>
         public void ClearIrqStatus(ushort mask)
         {
-            WriteCommand(OpClearIrqStatus, new byte[]
+            byte[] clearBytes = new byte[]
             {
                 (byte)(mask >> 8),
-                (byte) mask
-            });
+                (byte)mask
+            };
+            WriteCommand(OpClearIrqStatus, clearBytes);
         }
 
-        /// <summary>True when DIO1 is high — an IRQ is pending.</summary>
-        public bool IsDio1High => _dio1Pin.Read() == PinValue.High;
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
 
-        // ---------------------------------------------------------------
-        // Low-level SPI helpers
-        // ---------------------------------------------------------------
+            StopPolling();
+
+            if (_resetPin != null)
+            {
+                _resetPin.Dispose();
+                _resetPin = null;
+            }
+
+            if (_busyPin != null)
+            {
+                _busyPin.Dispose();
+                _busyPin = null;
+            }
+
+            if (_dio1Pin != null)
+            {
+                _dio1Pin.Dispose();
+                _dio1Pin = null;
+            }
+
+            if (_shouldDispose && _gpio != null)
+            {
+                _gpio.Dispose();
+            }
+
+            _disposed = true;
+        }
+
+        private void PollLoop()
+        {
+            while (!_stopPolling)
+            {
+                if (IsDio1High)
+                {
+                    HandleRxDone();
+                }
+                else
+                {
+                    Thread.Sleep(5);
+                }
+            }
+        }
 
         internal void WriteCommand(byte opCode, byte[] data)
         {
@@ -442,26 +547,6 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             byte[] result = new byte[responseLen];
             Array.Copy(rx, 2, result, 0, responseLen);
             return result;
-        }
-
-        // ---------------------------------------------------------------
-        // IDisposable
-        // ---------------------------------------------------------------
-
-        /// <inheritdoc/>
-        public void Dispose()
-        {
-            if (_disposed) return;
-
-            StopPolling();
-
-            if (_resetPin != null) { _resetPin.Dispose(); _resetPin = null; }
-            if (_busyPin != null) { _busyPin.Dispose(); _busyPin = null; }
-            if (_dio1Pin != null) { _dio1Pin.Dispose(); _dio1Pin = null; }
-
-            if (_shouldDispose && _gpio != null) _gpio.Dispose();
-
-            _disposed = true;
         }
     }
 }
