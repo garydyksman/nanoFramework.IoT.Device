@@ -59,8 +59,8 @@ namespace Sx1262Sample
             Debug.WriteLine("LoRa SX1262 sample starting...");
             _lora.Reset();
 
-            Debug.WriteLine("Initialising LoRa...");
-            _lora.Initialise();
+            Debug.WriteLine("Initializing LoRa...");
+            _lora.Initialize();
 
             // PacketReceived is raised from a background thread, so work can continue here without blocking the main thread.
             _lora.PacketReceived += OnPacketReceived;

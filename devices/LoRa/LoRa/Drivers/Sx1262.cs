@@ -211,7 +211,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         //// ---------------------------------------------------------------
 
         /// <inheritdoc/>
-        public void Initialise()
+        public void Initialize()
         {
             WriteCommand(OpSetDio3AsTcxoCtrl, new byte[] { 0x02, 0x00, 0x01, 0x40 });
             WriteCommand(OpCalibrate, new byte[] { 0x7F });
@@ -441,9 +441,19 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         public void StopPolling()
         {
             _stopPolling = true;
-            if (_pollThread != null)
+            Thread worker = _pollThread;
+            if (worker == null)
             {
-                _pollThread.Join();
+                return;
+            }
+
+            if (Thread.CurrentThread != worker)
+            {
+                worker.Join();
+            }
+
+            if (Thread.CurrentThread != worker && _pollThread == worker)
+            {
                 _pollThread = null;
             }
         }
@@ -515,15 +525,25 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
 
         private void PollLoop()
         {
-            while (!_stopPolling)
+            try
             {
-                if (IsDio1High)
+                while (!_stopPolling)
                 {
-                    HandleRxDone();
+                    if (IsDio1High)
+                    {
+                        HandleRxDone();
+                    }
+                    else
+                    {
+                        Thread.Sleep(5);
+                    }
                 }
-                else
+            }
+            finally
+            {
+                if (_pollThread == Thread.CurrentThread)
                 {
-                    Thread.Sleep(5);
+                    _pollThread = null;
                 }
             }
         }

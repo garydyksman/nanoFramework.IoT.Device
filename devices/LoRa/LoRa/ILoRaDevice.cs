@@ -18,9 +18,9 @@ namespace Iot.Device.LoRa
         void Reset();
 
         /// <summary>
-        /// Applies the full initialisation sequence. Call once after <see cref="ILoRaDevice.Reset" />.
+        /// Applies the full initialization sequence. Call once after <see cref="ILoRaDevice.Reset" />.
         /// </summary>
-        void Initialise();
+        void Initialize();
 
         /// <summary>
         /// Sets the RF carrier frequency in Hz (for example 868000000).
