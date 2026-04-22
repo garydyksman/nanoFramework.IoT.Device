@@ -21,12 +21,16 @@
     <IsTestProject>true</IsTestProject>
     <TestProjectType>UnitTest</TestProjectType>
     <TargetFrameworkVersion>v1.0</TargetFrameworkVersion>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(TF_BUILD)' == 'True' or '$(ContinuousIntegrationBuild)' == 'True'">true</RestoreLockedMode>
   </PropertyGroup>
   <Import Project="$(NanoFrameworkProjectSystemPath)NFProjectSystem.props" Condition="Exists('$(NanoFrameworkProjectSystemPath)NFProjectSystem.props')" />
   <PropertyGroup>
     <RunSettingsFilePath>$(MSBuildProjectDirectory)\nano.runsettings</RunSettingsFilePath>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="LoRaMessageTests.cs" />
+    <Compile Include="Sx1262ConstructorTests.cs" />
     <Compile Include="Sx1262DecodeChipModeTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
@@ -44,6 +48,7 @@
   <ItemGroup>
     <None Include="nano.runsettings" />
     <None Include="packages.config" />
+    <Content Include="packages.lock.json" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LoRa\LoRa.nfproj" />

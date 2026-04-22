@@ -33,7 +33,8 @@ namespace Iot.Device.LoRa
         /// <para>Do not call from <see cref="ILoRaDevice.PacketReceived" /> (the poll thread); implementations throw <see cref="InvalidOperationException" /> if invoked on that thread.</para>
         /// </summary>
         /// <param name="payload">The bytes to transmit.</param>
-        /// <param name="timeoutMs">Maximum time to wait for completion, in milliseconds.</param>
+        /// <param name="timeoutMs">Maximum time to wait for completion, in milliseconds. Must be greater than zero.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeoutMs" /> is less than or equal to zero.</exception>
         /// <exception cref="TimeoutException">Thrown when TX does not complete in time.</exception>
         /// <exception cref="InvalidOperationException">Thrown when called from the RX poll thread.</exception>
         void Send(byte[] payload, int timeoutMs);
@@ -45,7 +46,8 @@ namespace Iot.Device.LoRa
         void StartPolling();
 
         /// <summary>
-        /// Signals the poll thread to stop and blocks until it exits.
+        /// <para>Signals the poll thread to stop. When called from another thread, blocks until the poll thread exits.</para>
+        /// <para>When called from the poll thread itself (for example from <see cref="ILoRaDevice.PacketReceived" />), returns without blocking; the thread then exits.</para>
         /// </summary>
         void StopPolling();
 

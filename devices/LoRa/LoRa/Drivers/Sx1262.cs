@@ -2,9 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
-using System.Diagnostics;
 using System.Device.Gpio;
 using System.Device.Spi;
+using System.Diagnostics;
 using System.Threading;
 
 namespace Iot.Device.LoRa.Drivers.Sx1262
@@ -58,6 +58,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         private readonly GpioController _gpio;
         private readonly bool _shouldDispose;
         private readonly bool _disposeSpi;
+        private readonly object _sendLock = new object();
 
         private GpioPin _resetPin;
         private GpioPin _busyPin;
@@ -69,7 +70,9 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         // RX poll thread
         // ---------------------------------------------------------------
         private Thread _pollThread;
-        private bool _stopPolling;
+
+        // 0 = poll loop runs; 1 = stop requested. Use Interlocked for cross-thread visibility (documented on nanoFramework).
+        private int _stopPolling;
 
         // ---------------------------------------------------------------
         // Static helpers (SA1204: public static before non-static public)
@@ -263,6 +266,14 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <inheritdoc/>
         public void Send(byte[] payload, int timeoutMs)
         {
+            lock (_sendLock)
+            {
+                SendCore(payload, timeoutMs);
+            }
+        }
+
+        private void SendCore(byte[] payload, int timeoutMs)
+        {
             if (payload == null)
             {
                 throw new ArgumentNullException(nameof(payload));
@@ -276,6 +287,11 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             if (payload.Length > 255)
             {
                 throw new ArgumentException("Payload exceeds 255 bytes", nameof(payload));
+            }
+
+            if (timeoutMs <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(timeoutMs), "Timeout must be greater than zero.");
             }
 
             if (_pollThread != null && Thread.CurrentThread == _pollThread)
@@ -461,7 +477,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 return;
             }
 
-            _stopPolling = false;
+            Interlocked.Exchange(ref _stopPolling, 0);
             StartReceiving();
 
             _pollThread = new Thread(PollLoop);
@@ -471,7 +487,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <inheritdoc/>
         public void StopPolling()
         {
-            _stopPolling = true;
+            Interlocked.Exchange(ref _stopPolling, 1);
             Thread worker = _pollThread;
             if (worker == null)
             {
@@ -563,7 +579,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         {
             try
             {
-                while (!_stopPolling)
+                while (Interlocked.CompareExchange(ref _stopPolling, 0, 0) == 0)
                 {
                     if (IsDio1High)
                     {

@@ -34,6 +34,26 @@ namespace Iot.Device.LoRa.LoraTests
         }
 
         /// <summary>
+        /// Verifies decoding of frequency-synthesizer mode bits in the status byte.
+        /// </summary>
+        [TestMethod]
+        public void DecodeChipMode_Fs_ReturnsFs()
+        {
+            byte status = (byte)(0x04 << 4);
+            Assert.Equal("FS", Sx1262.DecodeChipMode(status));
+        }
+
+        /// <summary>
+        /// Verifies decoding of RX mode bits in the status byte.
+        /// </summary>
+        [TestMethod]
+        public void DecodeChipMode_Rx_ReturnsRx()
+        {
+            byte status = (byte)(0x05 << 4);
+            Assert.Equal("RX", Sx1262.DecodeChipMode(status));
+        }
+
+        /// <summary>
         /// Verifies decoding of TX mode bits in the status byte.
         /// </summary>
         [TestMethod]
@@ -41,6 +61,26 @@ namespace Iot.Device.LoRa.LoraTests
         {
             byte status = (byte)(0x06 << 4);
             Assert.Equal("TX", Sx1262.DecodeChipMode(status));
+        }
+
+        /// <summary>
+        /// Verifies mode code 0 in bits [6:4] maps to unknown.
+        /// </summary>
+        [TestMethod]
+        public void DecodeChipMode_Mode0_ReturnsUnknown()
+        {
+            byte status = (byte)(0x00 << 4);
+            Assert.Equal("UNKNOWN", Sx1262.DecodeChipMode(status));
+        }
+
+        /// <summary>
+        /// Verifies reserved mode code 7 in bits [6:4] maps to unknown.
+        /// </summary>
+        [TestMethod]
+        public void DecodeChipMode_Mode7_ReturnsUnknown()
+        {
+            byte status = (byte)(0x07 << 4);
+            Assert.Equal("UNKNOWN", Sx1262.DecodeChipMode(status));
         }
 
         /// <summary>

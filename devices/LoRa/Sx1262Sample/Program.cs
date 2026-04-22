@@ -84,7 +84,7 @@ namespace Sx1262Sample
         {
             try
             {
-                byte[] payload = Encoding.UTF8.GetBytes($"Hello from the .Net nanoFramework: {DateTime.UtcNow}");
+                byte[] payload = Encoding.UTF8.GetBytes($"Hello from the .NET nanoFramework: {DateTime.UtcNow}");
                 Debug.WriteLine("Sending: '" + Encoding.UTF8.GetString(payload, 0, payload.Length) + "'");
 
                 _lora.Send(payload, 3000);
