@@ -1,4 +1,7 @@
-﻿using Iot.Device.EPaper;
+﻿// Copyright (c) 2022 The nanoFramework project contributors
+// See LICENSE file in the project root for full license information.
+
+using Iot.Device.EPaper;
 using Iot.Device.EPaper.Drivers.LcmEn2r13;
 using Iot.Device.EPaper.Enums;
 using Iot.Device.EPaper.Fonts;

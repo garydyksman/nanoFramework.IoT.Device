@@ -1,11 +1,13 @@
+// Copyright (c) 2022 The nanoFramework project contributors
+// See LICENSE file in the project root for full license information.
+
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("LcmEn2r13Sample")]
 [assembly: AssemblyCompany("nanoFramework Contributors")]
-[assembly: AssemblyProduct("LcmEn2r13Sample")]
-[assembly: AssemblyCopyright("Copyright(c) .NET Foundation and Contributors")]
+[assembly: AssemblyCopyright("Copyright(c).NET Foundation and Contributors")]
 
 [assembly: ComVisible(false)]
 
@@ -14,6 +16,3 @@ using System.Runtime.InteropServices;
 // update this whenever the native assembly signature changes  //
 [assembly: AssemblyNativeVersion("0.0.0.0")]
 /////////////////////////////////////////////////////////////////
-
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]

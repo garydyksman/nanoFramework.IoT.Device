@@ -389,6 +389,9 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
             SendCommand((byte)Command.WritePreviousImage);
             SendData(_whiteFrame);
 
+            // Keep shadow previous RAM in sync so Flush()/partial refresh see the same old/new pair as the panel.
+            UpdatePreviousFrame();
+
             if (triggerPageRefresh)
             {
                 PerformFullRefresh();
