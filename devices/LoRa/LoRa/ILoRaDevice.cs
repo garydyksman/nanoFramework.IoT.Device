@@ -29,11 +29,13 @@ namespace Iot.Device.LoRa
         void SetRfFrequency(uint frequencyHz);
 
         /// <summary>
-        /// Sends <paramref name="payload" /> over LoRa, blocking until TxDone or until <paramref name="timeoutMs" /> elapses.
+        /// <para>Sends <paramref name="payload" /> over LoRa, blocking until TxDone or until <paramref name="timeoutMs" /> elapses.</para>
+        /// <para>Do not call from <see cref="ILoRaDevice.PacketReceived" /> (the poll thread); implementations throw <see cref="InvalidOperationException" /> if invoked on that thread.</para>
         /// </summary>
         /// <param name="payload">The bytes to transmit.</param>
         /// <param name="timeoutMs">Maximum time to wait for completion, in milliseconds.</param>
         /// <exception cref="TimeoutException">Thrown when TX does not complete in time.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when called from the RX poll thread.</exception>
         void Send(byte[] payload, int timeoutMs);
 
         /// <summary>

@@ -4,9 +4,8 @@
 using System;
 using System.Device.Gpio;
 using System.Device.Spi;
+using System.Diagnostics;
 using System.Threading;
-
-using Iot.Device.LoRa;
 
 namespace Iot.Device.LoRa.Drivers.Sx1262
 {
@@ -270,11 +269,22 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 throw new ArgumentException("Payload exceeds 255 bytes");
             }
 
-            // Take SPI ownership away from the poll thread.
-            StopPolling();
+            if (_pollThread != null && Thread.CurrentThread == _pollThread)
+            {
+                throw new InvalidOperationException(
+                    "Send cannot be called from the RX polling thread. Do not call Send from PacketReceived; post work to another thread instead.");
+            }
+
+            bool restartPolling = _pollThread != null;
+            if (restartPolling)
+            {
+                StopPolling();
+            }
 
             try
             {
+                ClearIrqStatus(0xFFFF);
+
                 byte[] packetParams = new byte[]
                 {
                     0x00, 0x08, 0x00,
@@ -311,8 +321,10 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             }
             finally
             {
-                // Always restart RX polling, even if TX threw.
-                StartPolling();
+                if (restartPolling)
+                {
+                    StartPolling();
+                }
             }
         }
 
@@ -389,16 +401,19 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
 
             if ((irq & IrqTimeout) != 0)
             {
+                StartReceiving();
                 return null;
             }
 
             if ((irq & IrqCrcErr) != 0)
             {
+                StartReceiving();
                 return null;
             }
 
             if ((irq & IrqRxDone) == 0)
             {
+                StartReceiving();
                 return null;
             }
 
@@ -412,7 +427,14 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
 
             if (PacketReceived != null)
             {
-                PacketReceived(this, msg);
+                try
+                {
+                    PacketReceived(this, msg);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("LoRa PacketReceived handler failed: " + ex.Message);
+                }
             }
 
             return msg;
@@ -531,7 +553,14 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 {
                     if (IsDio1High)
                     {
-                        HandleRxDone();
+                        try
+                        {
+                            HandleRxDone();
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine("Sx1262 RX handling error: " + ex.Message);
+                        }
                     }
                     else
                     {

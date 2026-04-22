@@ -1,6 +1,8 @@
 // Copyright (c) 2024 The nanoFramework project contributors
 // See LICENSE file in the project root for full license information.
 
+using System;
+
 namespace Iot.Device.LoRa
 {
     /// <summary>
@@ -31,7 +33,13 @@ namespace Iot.Device.LoRa
         /// <param name="snr">The measured SNR in dB.</param>
         public LoRaMessage(byte[] payload, int rssi, float snr)
         {
-            Payload = payload;
+            if (payload == null)
+            {
+                throw new ArgumentNullException(nameof(payload));
+            }
+
+            Payload = new byte[payload.Length];
+            Array.Copy(payload, Payload, payload.Length);
             Rssi = rssi;
             Snr = snr;
         }

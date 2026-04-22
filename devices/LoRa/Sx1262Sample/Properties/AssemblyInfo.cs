@@ -5,6 +5,6 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("Iot.Device.Sx1262.Sample")]
 [assembly: AssemblyCompany("nanoFramework Contributors")]
-[assembly: AssemblyCopyright("Copyright(c).NET Foundation and Contributors")]
+[assembly: AssemblyCopyright("Copyright (c) .NET Foundation and Contributors")]
 
 [assembly: ComVisible(false)]

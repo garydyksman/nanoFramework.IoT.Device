@@ -15,7 +15,7 @@
     <icon>images\nf-logo.png</icon>
     <repository type="git" url="https://github.com/nanoframework/nanoFramework.IoT.Device" commit="$commit$" />
     <copyright>Copyright (c) .NET Foundation and Contributors</copyright>
-    <description>This package includes the .NET IoT Core binding Iot.Device.LoRa for .NET nanoFramework C# projects.</description>
+    <description>This package includes the LoRa binding Iot.Device.LoRa for .NET nanoFramework C# projects.</description>
     <summary>Iot.Device.LoRa assembly for .NET nanoFramework C# projects</summary>
     <tags>nanoFramework C# csharp netmf netnf Iot.Device.LoRa LoRa SX1262</tags>
     <dependencies>
