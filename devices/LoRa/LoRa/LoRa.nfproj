@@ -19,6 +19,7 @@
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <DocumentationFile>bin\$(Configuration)\Iot.Device.LoRa.xml</DocumentationFile>
     <StyleCopTreatErrorsAsWarnings>false</StyleCopTreatErrorsAsWarnings>
+    <StyleCopOverrideSettingsFile>$(MSBuildProjectDirectory)\..\Settings.StyleCop</StyleCopOverrideSettingsFile>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RestoreLockedMode Condition="'$(TF_BUILD)' == 'True' or '$(ContinuousIntegrationBuild)' == 'True'">true</RestoreLockedMode>
   </PropertyGroup>
