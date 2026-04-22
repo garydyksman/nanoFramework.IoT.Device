@@ -98,6 +98,7 @@
 
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Amg88xx.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Amg88xx/) [AMG8833/AMG8834/AMG8853/AMG8854 Infrared Array Sensor Family](Amg88xx)
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Mlx90614.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Mlx90614/) [MLX90614 - Infra Red Thermometer](Mlx90614)
+* [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Paj7620.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Paj7620/) [PAJ7620U2 gesture sensor](Paj7620)
 
 ## Gyroscopes
 
@@ -192,6 +193,7 @@
 ## Motion sensors
 
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Hcsr501.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Hcsr501/) [HC-SR501 - PIR Motion Sensor](Hcsr501)
+* [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Paj7620.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Paj7620/) [PAJ7620U2 gesture sensor](Paj7620)
 
 ## Displays
 
@@ -227,6 +229,7 @@
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Chsc6540.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Chsc6540/) [CHSC6540 - Touch screen controller](Chsc6540)
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Ft6xx6x.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Ft6xx6x/) [Ft6xx6x/Ft6336GU - Touch screen controller](Ft6xx6x)
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Mpr121.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Mpr121/) [MPR121 - Proximity Capacitive Touch Sensor Controller](Mpr121)
+* [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Paj7620.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Paj7620/) [PAJ7620U2 gesture sensor](Paj7620)
 
 ## Touch sensors
 
@@ -320,6 +323,10 @@
 ## 
 
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Buzzer.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Buzzer/) [Buzzer - Piezo Buzzer Controller](Buzzer)
+
+## 
+
+* [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Paj7620.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Paj7620/) [PAJ7620U2 gesture sensor](Paj7620)
 
 ## 
 
