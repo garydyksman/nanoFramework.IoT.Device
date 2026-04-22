@@ -290,7 +290,6 @@ namespace Iot.Device.EPaper.Drivers.Jd796xx
         public virtual void EndFrameDraw()
         {
             Flush();
-            PerformFullRefresh();
         }
 
         /// <summary>

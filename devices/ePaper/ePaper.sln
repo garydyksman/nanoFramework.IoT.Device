@@ -11,7 +11,7 @@ Project("{11A8DD76-328B-46DF-9F39-F559912D0360}") = "SSD1681Sample", "Samples\SS
 EndProject
 Project("{11A8DD76-328B-46DF-9F39-F559912D0360}") = "SSD1680Sample", "Samples\SSD1680Sample\SSD1680Sample.nfproj", "{EC18BA20-33CB-4ABF-A644-CE91626370A7}"
 EndProject
-Project("{11A8DD76-328B-46DF-9F39-F559912D0360}") = "LcmEn2r13Sample", "..\LcmEn2r13Sample\LcmEn2r13Sample.nfproj", "{C15AD847-F43D-4396-9794-04E28EC16FF5}"
+Project("{11A8DD76-328B-46DF-9F39-F559912D0360}") = "LcmEn2r13Sample", "Samples\LcmEn2r13Sample\LcmEn2r13Sample.nfproj", "{C15AD847-F43D-4396-9794-04E28EC16FF5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

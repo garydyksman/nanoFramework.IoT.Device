@@ -63,13 +63,15 @@ namespace LcmEn2r13Sample
 
             var font = new Font8x12();
 
-            using var gfx = new Graphics(display)
+            using var gfx = new Graphics(display, disposeDisplay: false)
             {
                 DisplayRotation = Rotation.Degrees270Clockwise,
                 FlipGlyphsHorizontally = true
             };
 
             bool fillFirstShape = false;
+            int partialSinceFull = 0;
+            const int PartialUpdatesBeforeFull = 15;
 
             display.BeginFrameDraw();
             DrawDemoFrame(gfx, font, fillFirstShape);
@@ -86,8 +88,19 @@ namespace LcmEn2r13Sample
                 display.BeginFrameDraw();
                 DrawDemoFrame(gfx, font, fillFirstShape);
                 display.EndFrameDraw();
-                display.PerformPartialRefresh();
-                Debug.WriteLine("Partial refresh done");
+
+                partialSinceFull++;
+                if (partialSinceFull >= PartialUpdatesBeforeFull)
+                {
+                    display.PerformFullRefresh();
+                    partialSinceFull = 0;
+                    Debug.WriteLine("Full refresh done");
+                }
+                else
+                {
+                    display.PerformPartialRefresh();
+                    Debug.WriteLine("Partial refresh done");
+                }
             }
         }
 

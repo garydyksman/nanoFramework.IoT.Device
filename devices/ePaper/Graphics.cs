@@ -55,8 +55,11 @@ namespace Iot.Device.EPaper
         /// Initializes a new instance of the <see cref="Graphics"/> class.
         /// </summary>
         /// <param name="ePaperDisplay">The E-Paper display device to draw to.</param>
-        /// <param name="disposeDisplay">True to dispose the display when this instance is disposed.</param>
-        public Graphics(IEPaperDisplay ePaperDisplay, bool disposeDisplay = false)
+        /// <param name="disposeDisplay">
+        /// When <see langword="true"/>, <see cref="Dispose"/> also disposes <paramref name="ePaperDisplay"/>.
+        /// Pass <see langword="false"/> when the display lifetime is managed elsewhere (for example a <c>using</c> on the driver).
+        /// </param>
+        public Graphics(IEPaperDisplay ePaperDisplay, bool disposeDisplay = true)
         {
             EPaperDisplay = ePaperDisplay ?? throw new ArgumentNullException(nameof(ePaperDisplay));
             _disposeDisplay = disposeDisplay;
@@ -166,10 +169,20 @@ namespace Iot.Device.EPaper
 
             foreach (char character in text)
             {
+                if (y + line + font.Height > Height)
+                {
+                    break;
+                }
+
                 if (x + col + font.Width > Width)
                 {
                     col = 0;
                     line += font.Height + 1;
+
+                    if (y + line + font.Height > Height)
+                    {
+                        break;
+                    }
                 }
 
                 var characterBitmap = font[character];

@@ -47,6 +47,11 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
         /// </summary>
         public const SpiMode SpiMode = System.Device.Spi.SpiMode.Mode0;
 
+        /// <summary>
+        /// Minimum wait when no busy GPIO is wired; full refresh can exceed 1.5s on this panel.
+        /// </summary>
+        private const int BusyPinFallbackWaitMs = 3500;
+
         // FITI/internal tuning commands mirrored from Heltec's HT_lCMEN2R13EFC1 reference driver.
         private const byte VendorCommandFitIInternalCode = 0x4D;
         private const byte VendorCommandAnalogBlockControl = 0xA9;
@@ -255,10 +260,11 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
         /// </summary>
         /// <param name="x">The horizontal position.</param>
         /// <param name="y">The vertical position.</param>
-        /// <exception cref="NotImplementedException">Always thrown because positioned drawing is not implemented.</exception>
+        /// <remarks>
+        /// Positioned streaming writes are not used by this driver; callers should use <see cref="DrawPixel"/> or <see cref="Graphics"/>.
+        /// </remarks>
         public void SetPosition(int x, int y)
         {
-            throw new NotImplementedException();
         }
 
         /// <summary>
@@ -293,6 +299,11 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
             SendCommand((byte)Command.DisplayRefresh);
             WaitMs(100);
             WaitReady();
+
+            SendCommand((byte)Command.PowerOff);
+            WaitReady();
+            WaitMs(100);
+
             UpdatePreviousFrame();
 
             return true;
@@ -326,7 +337,8 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
             SendCommand((byte)Command.DisplayRefresh);
             WaitReady();
 
-            // Initialization sequence derived from Heltec's sendInitCommands().
+            // Initialization sequence: register values and order match Heltec sendInitCommands() for this panel;
+            // cross-check command bytes with the LCMEN2R13EFC1 / UC8151 datasheet register descriptions.
             SendCommand((byte)Command.PanelSetting);
             SendData(0xDF);
 
@@ -451,15 +463,18 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
 
         /// <summary>
         /// Waits until the display controller reports ready.
-        /// If no busy pin is available, a fixed delay is used instead.
         /// </summary>
         /// <param name="cancellationToken">A cancellation token for the wait operation.</param>
         /// <returns>True when the display is ready.</returns>
+        /// <remarks>
+        /// When a busy GPIO is used, this waits until BUSY is high (idle) for this UC8151-class controller.
+        /// If no busy pin is available, <see cref="BusyPinFallbackWaitMs"/> is used instead.
+        /// </remarks>
         public bool WaitReady(CancellationToken cancellationToken = default)
         {
             if (!_useBusyPin)
             {
-                WaitMs(1500);
+                WaitMs(BusyPinFallbackWaitMs);
                 return true;
             }
 
@@ -482,6 +497,7 @@ namespace Iot.Device.EPaper.Drivers.LcmEn2r13
 
         private void PrepareForWrite()
         {
+            // Data/COM interval, TCON, resolution, PLL, and vendor tuning bytes: from Heltec INIT_JD79656_mcu() / datasheet RAM write prep.
             SendCommand((byte)Command.VcomAndDataIntervalSetting);
             SendData(0x97);
 
