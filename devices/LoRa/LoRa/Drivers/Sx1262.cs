@@ -530,6 +530,9 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <inheritdoc/>
         public void StartPolling()
         {
+            // Keep new Thread(), Start(), and _pollThread assignment under the same lock as StopPolling uses
+            // so another thread never Join()s a worker that is published but not yet started.
+            // Callers must not invoke Send from PacketReceived (poll thread); doing so would deadlock while this lock is held during Start().
             lock (_pollLock)
             {
                 if (_pollThread != null)
@@ -538,24 +541,11 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 }
 
                 Interlocked.Exchange(ref _stopPolling, 0);
-            }
-
-            // Do not hold _pollLock across SPI or Thread.Start: avoids rare scheduler deadlocks with the poll thread.
-            StartReceiving();
-
-            Thread worker;
-            lock (_pollLock)
-            {
-                if (_pollThread != null)
-                {
-                    return;
-                }
-
-                worker = new Thread(PollLoop);
+                StartReceiving();
+                Thread worker = new Thread(PollLoop);
+                worker.Start();
                 _pollThread = worker;
             }
-
-            worker.Start();
         }
 
         /// <inheritdoc/>
@@ -575,7 +565,10 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
 
             if (Thread.CurrentThread != worker)
             {
-                worker.Join();
+                if (worker.IsAlive)
+                {
+                    worker.Join();
+                }
             }
 
             lock (_pollLock)
