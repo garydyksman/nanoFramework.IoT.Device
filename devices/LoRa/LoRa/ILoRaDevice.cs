@@ -30,10 +30,13 @@ namespace Iot.Device.LoRa
 
         /// <summary>
         /// <para>Sends <paramref name="payload" /> over LoRa, blocking until TxDone or until <paramref name="timeoutMs" /> elapses.</para>
+        /// <para>Callers must supply a non-null, non-empty payload within the implementation's maximum length (for <see cref="Iot.Device.LoRa.Drivers.Sx1262.Sx1262" />, see <see cref="Iot.Device.LoRa.Drivers.Sx1262.Sx1262.MaxPayloadLength" />).</para>
         /// <para>Do not call from <see cref="ILoRaDevice.PacketReceived" /> (the poll thread); implementations throw <see cref="InvalidOperationException" /> if invoked on that thread.</para>
         /// </summary>
         /// <param name="payload">The bytes to transmit.</param>
         /// <param name="timeoutMs">Maximum time to wait for completion, in milliseconds. Must be greater than zero.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="payload" /> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="payload" /> is empty or longer than the device maximum.</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeoutMs" /> is less than or equal to zero.</exception>
         /// <exception cref="TimeoutException">Thrown when TX does not complete in time.</exception>
         /// <exception cref="InvalidOperationException">Thrown when called from the RX poll thread.</exception>

@@ -36,47 +36,102 @@ namespace Sx1262Sample
         /// </summary>
         public static void Main()
         {
-            var gpio = new GpioController();
+            GpioController gpio = null;
+            SpiDevice loraSpi = null;
 
-            // ---- LoRa ----
-            Configuration.SetPinFunction(PinLoraMosi, DeviceFunction.SPI1_MOSI);
-            Configuration.SetPinFunction(PinLoraClk, DeviceFunction.SPI1_CLOCK);
-            Configuration.SetPinFunction(PinLoraMiso, DeviceFunction.SPI1_MISO);
-
-            SpiConnectionSettings spiSettings = new SpiConnectionSettings(1, PinLoraCs)
+            try
             {
-                ClockFrequency = 1000000,
-                Mode = SpiMode.Mode0,
-                DataBitLength = 8
-            };
-            SpiDevice loraSpi = SpiDevice.Create(spiSettings);
+                gpio = new GpioController();
 
-            _lora = new Sx1262(
-                loraSpi,
-                resetPin: PinLoraRst,
-                busyPin: PinLoraBusy,
-                dio1Pin: PinLoraDio1,
-                gpioController: gpio,
-                shouldDispose: false);
+                // ---- LoRa ----
+                Configuration.SetPinFunction(PinLoraMosi, DeviceFunction.SPI1_MOSI);
+                Configuration.SetPinFunction(PinLoraClk, DeviceFunction.SPI1_CLOCK);
+                Configuration.SetPinFunction(PinLoraMiso, DeviceFunction.SPI1_MISO);
 
-            Debug.WriteLine("LoRa SX1262 sample starting...");
-            _lora.Reset();
+                SpiConnectionSettings spiSettings = new SpiConnectionSettings(1, PinLoraCs)
+                {
+                    ClockFrequency = 1000000,
+                    Mode = SpiMode.Mode0,
+                    DataBitLength = 8
+                };
+                loraSpi = SpiDevice.Create(spiSettings);
 
-            Debug.WriteLine("Initializing LoRa...");
-            _lora.Initialize();
+                _lora = new Sx1262(
+                    loraSpi,
+                    resetPin: PinLoraRst,
+                    busyPin: PinLoraBusy,
+                    dio1Pin: PinLoraDio1,
+                    gpioController: gpio,
+                    shouldDispose: false);
 
-            // PacketReceived is raised from a background thread, so work can continue here without blocking the main thread.
-            _lora.PacketReceived += OnPacketReceived;
+                Debug.WriteLine("LoRa SX1262 sample starting...");
 
-            Debug.WriteLine("Starting LoRa receive polling...");
-            _lora.StartPolling();
+                try
+                {
+                    _lora.Reset();
 
-            // Send a message every 10 seconds from the main thread only, to avoid concurrency issues with the SX1262 driver.
-            while (true)
-            {
-                DoSend();
-                Thread.Sleep(10000);
+                    Debug.WriteLine("Initializing LoRa...");
+                    _lora.Initialize();
+
+                    // PacketReceived is raised from a background thread, so work can continue here without blocking the main thread.
+                    _lora.PacketReceived += OnPacketReceived;
+
+                    Debug.WriteLine("Starting LoRa receive polling...");
+                    _lora.StartPolling();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("LoRa initialization failed: " + ex.ToString());
+                    CleanupLora();
+                    loraSpi?.Dispose();
+                    loraSpi = null;
+                    gpio?.Dispose();
+                    gpio = null;
+                    while (true)
+                    {
+                        Thread.Sleep(60000);
+                    }
+                }
+
+                // Send a message every 10 seconds from the main thread only, to avoid concurrency issues with the SX1262 driver.
+                while (true)
+                {
+                    DoSend();
+                    Thread.Sleep(10000);
+                }
             }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Sample startup failed: " + ex.ToString());
+                CleanupLora();
+                loraSpi?.Dispose();
+                gpio?.Dispose();
+                while (true)
+                {
+                    Thread.Sleep(60000);
+                }
+            }
+        }
+
+        private static void CleanupLora()
+        {
+            if (_lora == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _lora.PacketReceived -= OnPacketReceived;
+                _lora.StopPolling();
+                _lora.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("LoRa cleanup failed: " + ex.ToString());
+            }
+
+            _lora = null;
         }
 
         // Called from main thread only.
@@ -84,8 +139,9 @@ namespace Sx1262Sample
         {
             try
             {
-                byte[] payload = Encoding.UTF8.GetBytes($"Hello from the .NET nanoFramework: {DateTime.UtcNow}");
-                Debug.WriteLine("Sending: '" + Encoding.UTF8.GetString(payload, 0, payload.Length) + "'");
+                string message = "Hello from the .NET nanoFramework: " + DateTime.UtcNow;
+                Debug.WriteLine(message);
+                byte[] payload = Encoding.UTF8.GetBytes(message);
 
                 _lora.Send(payload, 3000);
 

@@ -16,6 +16,11 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
     /// </summary>
     public class Sx1262 : ILoRaDevice
     {
+        /// <summary>
+        /// Maximum TX/RX payload length supported by this driver (matches the SX1262 length field in this configuration).
+        /// </summary>
+        public const int MaxPayloadLength = 255;
+
         // ---------------------------------------------------------------
         // Op-codes (datasheet section 11.1)
         // ---------------------------------------------------------------
@@ -59,6 +64,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         private readonly bool _shouldDispose;
         private readonly bool _disposeSpi;
         private readonly object _sendLock = new object();
+        private readonly object _pollLock = new object();
 
         private GpioPin _resetPin;
         private GpioPin _busyPin;
@@ -266,14 +272,24 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <inheritdoc/>
         public void Send(byte[] payload, int timeoutMs)
         {
+            // Never call StartPolling while holding _sendLock: the poll thread may invoke PacketReceived
+            // and a handler could call Send again, which would deadlock. Restart RX only after releasing the lock.
+            bool restoreRxAfterSend = false;
             lock (_sendLock)
             {
-                SendCore(payload, timeoutMs);
+                SendCore(payload, timeoutMs, out restoreRxAfterSend);
+            }
+
+            if (restoreRxAfterSend)
+            {
+                StartPolling();
             }
         }
 
-        private void SendCore(byte[] payload, int timeoutMs)
+        private void SendCore(byte[] payload, int timeoutMs, out bool restoreRxAfterSend)
         {
+            restoreRxAfterSend = false;
+
             if (payload == null)
             {
                 throw new ArgumentNullException(nameof(payload));
@@ -284,9 +300,9 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 throw new ArgumentException("Payload cannot be empty", nameof(payload));
             }
 
-            if (payload.Length > 255)
+            if (payload.Length > MaxPayloadLength)
             {
-                throw new ArgumentException("Payload exceeds 255 bytes", nameof(payload));
+                throw new ArgumentException("Payload exceeds " + MaxPayloadLength + " bytes", nameof(payload));
             }
 
             if (timeoutMs <= 0)
@@ -294,62 +310,58 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs), "Timeout must be greater than zero.");
             }
 
-            if (_pollThread != null && Thread.CurrentThread == _pollThread)
+            bool wasPolling;
+            lock (_pollLock)
             {
-                throw new InvalidOperationException(
-                    "Send cannot be called from the RX polling thread. Do not call Send from PacketReceived; post work to another thread instead.");
+                if (_pollThread != null && Thread.CurrentThread == _pollThread)
+                {
+                    throw new InvalidOperationException(
+                        "Send cannot be called from the RX polling thread. Do not call Send from PacketReceived; post work to another thread instead.");
+                }
+
+                wasPolling = _pollThread != null;
             }
 
-            bool restartPolling = _pollThread != null;
-            if (restartPolling)
+            if (wasPolling)
             {
                 StopPolling();
+                restoreRxAfterSend = true;
             }
 
-            try
+            ClearIrqStatus(0xFFFF);
+
+            byte[] packetParams = new byte[]
             {
-                ClearIrqStatus(0xFFFF);
+                0x00, 0x08, 0x00,
+                (byte)payload.Length,
+                0x01, 0x00
+            };
+            WriteCommand(OpSetPacketParams, packetParams);
 
-                byte[] packetParams = new byte[]
+            WriteBuffer(0x00, payload);
+            WriteCommand(OpSetTx, new byte[] { 0x00, 0x00, 0x00 });
+
+            int elapsed = 0;
+            while (!IsDio1High)
+            {
+                Thread.Sleep(1);
+                if (++elapsed >= timeoutMs)
                 {
-                    0x00, 0x08, 0x00,
-                    (byte)payload.Length,
-                    0x01, 0x00
-                };
-                WriteCommand(OpSetPacketParams, packetParams);
-
-                WriteBuffer(0x00, payload);
-                WriteCommand(OpSetTx, new byte[] { 0x00, 0x00, 0x00 });
-
-                int elapsed = 0;
-                while (!IsDio1High)
-                {
-                    Thread.Sleep(1);
-                    if (++elapsed >= timeoutMs)
-                    {
-                        throw new TimeoutException("SX1262 TxDone timeout");
-                    }
-                }
-
-                ushort irq = GetIrqStatus();
-                ClearIrqStatus(0xFFFF);
-
-                if ((irq & IrqTimeout) != 0)
-                {
-                    throw new TimeoutException("SX1262 TX timeout IRQ");
-                }
-
-                if ((irq & IrqTxDone) == 0)
-                {
-                    throw new InvalidOperationException("Unexpected IRQ after TX");
+                    throw new TimeoutException("SX1262 TxDone timeout");
                 }
             }
-            finally
+
+            ushort irq = GetIrqStatus();
+            ClearIrqStatus(0xFFFF);
+
+            if ((irq & IrqTimeout) != 0)
             {
-                if (restartPolling)
-                {
-                    StartPolling();
-                }
+                throw new TimeoutException("SX1262 TX timeout IRQ");
+            }
+
+            if ((irq & IrqTxDone) == 0)
+            {
+                throw new InvalidOperationException("Unexpected IRQ after TX");
             }
         }
 
@@ -424,33 +436,36 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             ushort irq = GetIrqStatus();
             ClearIrqStatus(0xFFFF);
 
-            if ((irq & IrqTimeout) != 0)
+            LoRaMessage msg = null;
+            try
+            {
+                if ((irq & IrqTimeout) != 0)
+                {
+                    return null;
+                }
+
+                if ((irq & IrqCrcErr) != 0)
+                {
+                    return null;
+                }
+
+                if ((irq & IrqRxDone) == 0)
+                {
+                    return null;
+                }
+
+                GetRxBufferStatus(out byte length, out byte offset);
+                byte[] payload = ReadBuffer(offset, length);
+
+                GetPacketStatus(out int rssi, out float snr);
+                msg = new LoRaMessage(payload, rssi, snr);
+            }
+            finally
             {
                 StartReceiving();
-                return null;
             }
 
-            if ((irq & IrqCrcErr) != 0)
-            {
-                StartReceiving();
-                return null;
-            }
-
-            if ((irq & IrqRxDone) == 0)
-            {
-                StartReceiving();
-                return null;
-            }
-
-            GetRxBufferStatus(out byte length, out byte offset);
-            byte[] payload = ReadBuffer(offset, length);
-
-            GetPacketStatus(out int rssi, out float snr);
-            LoRaMessage msg = new LoRaMessage(payload, rssi, snr);
-
-            StartReceiving();
-
-            if (PacketReceived != null)
+            if (msg != null && PacketReceived != null)
             {
                 try
                 {
@@ -472,23 +487,44 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <inheritdoc/>
         public void StartPolling()
         {
-            if (_pollThread != null)
+            lock (_pollLock)
             {
-                return;
+                if (_pollThread != null)
+                {
+                    return;
+                }
+
+                Interlocked.Exchange(ref _stopPolling, 0);
             }
 
-            Interlocked.Exchange(ref _stopPolling, 0);
+            // Do not hold _pollLock across SPI or Thread.Start: avoids rare scheduler deadlocks with the poll thread.
             StartReceiving();
 
-            _pollThread = new Thread(PollLoop);
-            _pollThread.Start();
+            Thread worker;
+            lock (_pollLock)
+            {
+                if (_pollThread != null)
+                {
+                    return;
+                }
+
+                worker = new Thread(PollLoop);
+                _pollThread = worker;
+            }
+
+            worker.Start();
         }
 
         /// <inheritdoc/>
         public void StopPolling()
         {
-            Interlocked.Exchange(ref _stopPolling, 1);
-            Thread worker = _pollThread;
+            Thread worker;
+            lock (_pollLock)
+            {
+                Interlocked.Exchange(ref _stopPolling, 1);
+                worker = _pollThread;
+            }
+
             if (worker == null)
             {
                 return;
@@ -499,9 +535,12 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 worker.Join();
             }
 
-            if (Thread.CurrentThread != worker && _pollThread == worker)
+            lock (_pollLock)
             {
-                _pollThread = null;
+                if (Thread.CurrentThread != worker && _pollThread == worker)
+                {
+                    _pollThread = null;
+                }
             }
         }
 
@@ -600,9 +639,12 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             }
             finally
             {
-                if (_pollThread == Thread.CurrentThread)
+                lock (_pollLock)
                 {
-                    _pollThread = null;
+                    if (_pollThread == Thread.CurrentThread)
+                    {
+                        _pollThread = null;
+                    }
                 }
             }
         }
