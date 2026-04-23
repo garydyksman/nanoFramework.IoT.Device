@@ -7,6 +7,8 @@ using System.Device.Spi;
 using System.Diagnostics;
 using System.Threading;
 
+using Iot.Device.LoRa;
+
 namespace Iot.Device.LoRa.Drivers.Sx1262
 {
     /// <summary>
@@ -158,11 +160,46 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             _shouldDispose = shouldDispose || gpioController == null;
             _disposeSpi = disposeSpi;
 
-            _resetPin = _gpio.OpenPin(resetPin, PinMode.Output);
-            _busyPin = _gpio.OpenPin(busyPin, PinMode.Input);
-            _dio1Pin = _gpio.OpenPin(dio1Pin, PinMode.Input);
+            GpioPin resetPinObj = null;
+            GpioPin busyPinObj = null;
+            GpioPin dio1PinObj = null;
+            try
+            {
+                resetPinObj = _gpio.OpenPin(resetPin, PinMode.Output);
+                busyPinObj = _gpio.OpenPin(busyPin, PinMode.Input);
+                dio1PinObj = _gpio.OpenPin(dio1Pin, PinMode.Input);
+                resetPinObj.Write(PinValue.High);
+                _resetPin = resetPinObj;
+                _busyPin = busyPinObj;
+                _dio1Pin = dio1PinObj;
+                resetPinObj = null;
+                busyPinObj = null;
+                dio1PinObj = null;
+            }
+            catch
+            {
+                if (dio1PinObj != null)
+                {
+                    dio1PinObj.Dispose();
+                }
 
-            _resetPin.Write(PinValue.High);
+                if (busyPinObj != null)
+                {
+                    busyPinObj.Dispose();
+                }
+
+                if (resetPinObj != null)
+                {
+                    resetPinObj.Dispose();
+                }
+
+                if (_shouldDispose && _gpio != null)
+                {
+                    _gpio.Dispose();
+                }
+
+                throw;
+            }
         }
 
         // ---------------------------------------------------------------
@@ -272,12 +309,26 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <inheritdoc/>
         public void Send(byte[] payload, int timeoutMs)
         {
+            // Poll-thread check must run before _sendLock: the poll thread must never block on _sendLock
+            // (e.g. if a PacketReceived handler calls Send), or it can deadlock with the thread holding the lock.
+            bool wasPolling;
+            lock (_pollLock)
+            {
+                if (_pollThread != null && Thread.CurrentThread == _pollThread)
+                {
+                    throw new InvalidOperationException(
+                        "Send cannot be called from the RX polling thread. Do not call Send from PacketReceived; post work to another thread instead.");
+                }
+
+                wasPolling = _pollThread != null;
+            }
+
             // Never call StartPolling while holding _sendLock: the poll thread may invoke PacketReceived
             // and a handler could call Send again, which would deadlock. Restart RX only after releasing the lock.
             bool restoreRxAfterSend = false;
             lock (_sendLock)
             {
-                SendCore(payload, timeoutMs, out restoreRxAfterSend);
+                SendCore(payload, timeoutMs, wasPolling, out restoreRxAfterSend);
             }
 
             if (restoreRxAfterSend)
@@ -286,7 +337,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             }
         }
 
-        private void SendCore(byte[] payload, int timeoutMs, out bool restoreRxAfterSend)
+        private void SendCore(byte[] payload, int timeoutMs, bool wasPolling, out bool restoreRxAfterSend)
         {
             restoreRxAfterSend = false;
 
@@ -308,18 +359,6 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             if (timeoutMs <= 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs), "Timeout must be greater than zero.");
-            }
-
-            bool wasPolling;
-            lock (_pollLock)
-            {
-                if (_pollThread != null && Thread.CurrentThread == _pollThread)
-                {
-                    throw new InvalidOperationException(
-                        "Send cannot be called from the RX polling thread. Do not call Send from PacketReceived; post work to another thread instead.");
-                }
-
-                wasPolling = _pollThread != null;
             }
 
             if (wasPolling)
@@ -465,15 +504,19 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 StartReceiving();
             }
 
-            if (msg != null && PacketReceived != null)
+            if (msg != null)
             {
-                try
+                PacketReceivedHandler handler = PacketReceived;
+                if (handler != null)
                 {
-                    PacketReceived(this, msg);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine("LoRa PacketReceived handler failed: " + ex.Message);
+                    try
+                    {
+                        handler(this, msg);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine("LoRa PacketReceived handler failed: " + ex.Message);
+                    }
                 }
             }
 
