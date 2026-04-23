@@ -243,6 +243,7 @@
 
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.AtModem.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.AtModem/) [Generic AT Modem SIM800 and SIM7070, SIM7080, SIM7090 - Dual Mode Wireless Module CatM, LTE modems](AtModem)
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.Nrf24l01.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.Nrf24l01/) [nRF24L01 - Single Chip 2.4 GHz Transceiver](Nrf24l01)
+* [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.LoRa.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.LoRa/) [LoRa - Semtech SX1262 transceiver (Iot.Device.LoRa)](LoRa)
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.RadioReceiver.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.RadioReceiver/) [Radio Receiver](RadioReceiver)
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.RadioTransmitter.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.RadioTransmitter/) [Radio Transmitter](RadioTransmitter)
 * [![NuGet](https://img.shields.io/nuget/v/nanoFramework.Iot.Device.SwarmTile.svg?label=NuGet&style=flat&logo=nuget)](https://www.nuget.org/packages/nanoFramework.Iot.Device.SwarmTile/) [Swarm Tile](SwarmTile)
