@@ -36,8 +36,8 @@ namespace Iot.Device.LoRa
         /// <param name="payload">The bytes to transmit.</param>
         /// <param name="timeoutMs">Maximum time to wait for completion, in milliseconds. Must be greater than zero.</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="payload" /> is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="payload" /> is empty or longer than the device maximum.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeoutMs" /> is less than or equal to zero.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="payload" /> is empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="payload" /> exceeds the device maximum or <paramref name="timeoutMs" /> is not positive.</exception>
         /// <exception cref="TimeoutException">Thrown when TX does not complete in time.</exception>
         /// <exception cref="InvalidOperationException">Thrown when called from the RX poll thread.</exception>
         void Send(byte[] payload, int timeoutMs);

@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Buffers.Binary;
 using System.Device.Gpio;
 using System.Device.Spi;
 using System.Diagnostics;
@@ -15,6 +16,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
     /// <para>Low-level SX1262 LoRa radio driver.</para>
     /// <para>Heltec Vision Master E213 (HT-VME213) default pin mapping: NSS = 8, SCK = 9, MOSI = 10, MISO = 11, RST = 12, BUSY = 13, DIO1 = 14.</para>
     /// <para>Supports reset, initialization, TX, RX polling, and buffer access.</para>
+    /// <datasheet>https://semtech.my.salesforce.com/sfc/p/#E0000000JelG/a/RQ000008n3pp/qXjWn19TZmb.1MgqPZ8Vrc5V7U.M_lOAIoTZHcEAeTI or see datasheet folder.</datasheet>
     /// </summary>
     public class Sx1262 : ILoRaDevice
     {
@@ -93,37 +95,15 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <returns>A short label describing the chip mode.</returns>
         public static string DecodeChipMode(byte status)
         {
-            switch ((byte)((status >> 4) & 0x07))
+            byte mode = (byte)((status >> 4) & 0x07);
+            switch (mode)
             {
-                case 0x02:
-                {
-                    return "STDBY_RC";
-                }
-
-                case 0x03:
-                {
-                    return "STDBY_XOSC";
-                }
-
-                case 0x04:
-                {
-                    return "FS";
-                }
-
-                case 0x05:
-                {
-                    return "RX";
-                }
-
-                case 0x06:
-                {
-                    return "TX";
-                }
-
-                default:
-                {
-                    return "UNKNOWN";
-                }
+                case 0x02: return "STDBY_RC";
+                case 0x03: return "STDBY_XOSC";
+                case 0x04: return "FS";
+                case 0x05: return "RX";
+                case 0x06: return "TX";
+                default: return "UNKNOWN";
             }
         }
 
@@ -141,6 +121,9 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <param name="gpioController">Optional shared GPIO controller; a new instance is created when null.</param>
         /// <param name="shouldDispose">True to dispose the GPIO controller when this instance is disposed.</param>
         /// <param name="disposeSpi">True to dispose <paramref name="spiDevice" /> when this instance is disposed (use false when the bus is shared).</param>
+        /// <remarks>
+        /// GPIO pins are opened incrementally. Temporary <see cref="GpioPin" /> references hold partially opened pins; after all opens succeed, fields are assigned and temporaries are nulled so failure cleanup only disposes pins that were actually opened.
+        /// </remarks>
         public Sx1262(
             SpiDevice spiDevice,
             int resetPin,
@@ -153,6 +136,21 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             if (spiDevice == null)
             {
                 throw new ArgumentNullException(nameof(spiDevice));
+            }
+
+            if (resetPin < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(resetPin));
+            }
+
+            if (busyPin < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(busyPin));
+            }
+
+            if (dio1Pin < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(dio1Pin));
             }
 
             _spi = spiDevice;
@@ -229,6 +227,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// Blocks until BUSY goes low or the timeout expires.
         /// </summary>
         /// <param name="timeoutMs">Maximum time to wait, in milliseconds.</param>
+        /// <exception cref="TimeoutException">BUSY did not go low within <paramref name="timeoutMs" />.</exception>
         public void WaitBusy(int timeoutMs)
         {
             int elapsed = 0;
@@ -237,7 +236,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 Thread.Sleep(1);
                 if (++elapsed >= timeoutMs)
                 {
-                    throw new TimeoutException("SX1262 BUSY timeout");
+                    throw new TimeoutException();
                 }
             }
         }
@@ -248,9 +247,9 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <returns>The second byte of the status SPI transaction.</returns>
         public byte GetStatus()
         {
-            WaitBusy(5000);
             byte[] tx = new byte[] { OpGetStatus, 0x00 };
             byte[] rx = new byte[2];
+            WaitBusy(5000);
             _spi.TransferFullDuplex(tx, rx);
             return rx[1];
         }
@@ -260,6 +259,10 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         //// ---------------------------------------------------------------
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <para>Command opcodes are listed in the Semtech SX1261/2 datasheet §11.1.</para>
+        /// <para>Literal parameter bytes below follow §13.4 (configuration): TCXO on DIO3, calibration, regulator, standby, packet type, PA, modulation, IRQ mapping, etc. Adjust values for your board and RF plan; this sequence matches a typical 868 MHz LoRa setup.</para>
+        /// </remarks>
         public void Initialize()
         {
             WriteCommand(OpSetDio3AsTcxoCtrl, new byte[] { 0x02, 0x00, 0x01, 0x40 });
@@ -283,13 +286,8 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         public void SetRfFrequency(uint frequencyHz)
         {
             ulong frf = ((ulong)frequencyHz << 25) / 32000000UL;
-            byte[] rfFreqBytes = new byte[]
-            {
-                (byte)(frf >> 24),
-                (byte)(frf >> 16),
-                (byte)(frf >> 8),
-                (byte)frf
-            };
+            byte[] rfFreqBytes = new byte[4];
+            BinaryPrimitives.WriteUInt32BigEndian(rfFreqBytes, (uint)frf);
             WriteCommand(OpSetRfFrequency, rfFreqBytes);
         }
 
@@ -307,6 +305,8 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         //// ---------------------------------------------------------------
 
         /// <inheritdoc/>
+        /// <exception cref="InvalidOperationException">This method was called from the RX polling thread (e.g. inside <see cref="PacketReceived" />). Post work to another thread instead.</exception>
+        /// <exception cref="TimeoutException">DIO1 did not indicate TX completion within <paramref name="timeoutMs" />, or the chip reported a TX timeout IRQ.</exception>
         public void Send(byte[] payload, int timeoutMs)
         {
             // Poll-thread check must run before _sendLock: the poll thread must never block on _sendLock
@@ -316,8 +316,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             {
                 if (_pollThread != null && Thread.CurrentThread == _pollThread)
                 {
-                    throw new InvalidOperationException(
-                        "Send cannot be called from the RX polling thread. Do not call Send from PacketReceived; post work to another thread instead.");
+                    throw new InvalidOperationException();
                 }
 
                 wasPolling = _pollThread != null;
@@ -337,6 +336,17 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
             }
         }
 
+        /// <summary>TX path shared by <see cref="Send" />.</summary>
+        /// <param name="payload">The payload to send.</param>
+        /// <param name="timeoutMs">The timeout in milliseconds.</param>
+        /// <param name="wasPolling">Indicates whether polling was active before sending.</param>
+        /// <param name="restoreRxAfterSend">Set to true to restore RX polling after sending.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="payload" /> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="payload" /> is empty.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="payload" /> is longer than <see cref="MaxPayloadLength" />.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="timeoutMs" /> is not positive.</exception>
+        /// <exception cref="TimeoutException">TX did not complete in time or the chip signaled a TX timeout.</exception>
+        /// <exception cref="InvalidOperationException">The chip did not report <c>TxDone</c> after TX.</exception>
         private void SendCore(byte[] payload, int timeoutMs, bool wasPolling, out bool restoreRxAfterSend)
         {
             restoreRxAfterSend = false;
@@ -348,17 +358,17 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
 
             if (payload.Length == 0)
             {
-                throw new ArgumentException("Payload cannot be empty", nameof(payload));
+                throw new ArgumentException(string.Empty, nameof(payload));
             }
 
             if (payload.Length > MaxPayloadLength)
             {
-                throw new ArgumentException("Payload exceeds " + MaxPayloadLength + " bytes", nameof(payload));
+                throw new ArgumentOutOfRangeException(nameof(payload));
             }
 
             if (timeoutMs <= 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(timeoutMs), "Timeout must be greater than zero.");
+                throw new ArgumentOutOfRangeException(nameof(timeoutMs));
             }
 
             if (wasPolling)
@@ -386,7 +396,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
                 Thread.Sleep(1);
                 if (++elapsed >= timeoutMs)
                 {
-                    throw new TimeoutException("SX1262 TxDone timeout");
+                    throw new TimeoutException();
                 }
             }
 
@@ -395,12 +405,12 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
 
             if ((irq & IrqTimeout) != 0)
             {
-                throw new TimeoutException("SX1262 TX timeout IRQ");
+                throw new TimeoutException();
             }
 
             if ((irq & IrqTxDone) == 0)
             {
-                throw new InvalidOperationException("Unexpected IRQ after TX");
+                throw new InvalidOperationException();
             }
         }
 
@@ -411,11 +421,11 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <param name="data">Payload bytes to write.</param>
         public void WriteBuffer(byte offset, byte[] data)
         {
-            WaitBusy(5000);
             byte[] tx = new byte[2 + data.Length];
             tx[0] = OpWriteBuffer;
             tx[1] = offset;
             Array.Copy(data, 0, tx, 2, data.Length);
+            WaitBusy(5000);
             _spi.Write(tx);
         }
 
@@ -443,11 +453,11 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <returns>A copy of the received bytes.</returns>
         public byte[] ReadBuffer(byte offset, byte length)
         {
-            WaitBusy(5000);
             byte[] tx = new byte[3 + length];
             byte[] rx = new byte[3 + length];
             tx[0] = OpReadBuffer;
             tx[1] = offset;
+            WaitBusy(5000);
             _spi.TransferFullDuplex(tx, rx);
             byte[] result = new byte[length];
             Array.Copy(rx, 3, result, 0, length);
@@ -592,7 +602,7 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         public ushort GetIrqStatus()
         {
             byte[] r = ReadCommand(OpGetIrqStatus, 2);
-            return (ushort)((r[0] << 8) | r[1]);
+            return BinaryPrimitives.ReadUInt16BigEndian(r);
         }
 
         /// <summary>
@@ -601,11 +611,8 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
         /// <param name="mask">Bits to clear in the IRQ status register.</param>
         public void ClearIrqStatus(ushort mask)
         {
-            byte[] clearBytes = new byte[]
-            {
-                (byte)(mask >> 8),
-                (byte)mask
-            };
+            byte[] clearBytes = new byte[2];
+            BinaryPrimitives.WriteUInt16BigEndian(clearBytes, mask);
             WriteCommand(OpClearIrqStatus, clearBytes);
         }
 
@@ -687,19 +694,19 @@ namespace Iot.Device.LoRa.Drivers.Sx1262
 
         internal void WriteCommand(byte opCode, byte[] data)
         {
-            WaitBusy(5000);
             byte[] tx = new byte[1 + data.Length];
             tx[0] = opCode;
             Array.Copy(data, 0, tx, 1, data.Length);
+            WaitBusy(5000);
             _spi.Write(tx);
         }
 
         internal byte[] ReadCommand(byte opCode, int responseLen)
         {
-            WaitBusy(5000);
             byte[] tx = new byte[2 + responseLen];
             byte[] rx = new byte[2 + responseLen];
             tx[0] = opCode;
+            WaitBusy(5000);
             _spi.TransferFullDuplex(tx, rx);
             byte[] result = new byte[responseLen];
             Array.Copy(rx, 2, result, 0, responseLen);

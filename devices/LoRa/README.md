@@ -1,54 +1,106 @@
-# LoRa (Semtech SX1262)
+# Semtech SX1262 - LoRa transceiver
 
-The [Semtech SX1262](https://www.semtech.com/products/wireless-rf/lora-connect/sx1262) is a long-range LoRa transceiver with sub-GHz RF front end, used on many LoRaWAN and point-to-point modules.
+The [Semtech SX1262](https://www.semtech.com/products/wireless-rf/lora-connect/sx1262) is a sub-GHz LoRa transceiver used on many LoRaWAN and point-to-point modules.
 
-This folder contains the **Iot.Device.LoRa** binding for .NET nanoFramework: **`ILoRaDevice`** for common LoRa operations and **`Sx1262`** for SPI-connected SX1262 radios (reset, BUSY, DIO1 lines).
+This binding provides **Iot.Device.LoRa** for .NET nanoFramework: **`ILoRaDevice`** for common operations and **`Sx1262`** for SPI radios with reset, BUSY, and DIO1 lines.
 
-Official reference documentation: [SX1261/2 datasheet and application notes](https://www.semtech.com/products/wireless-rf/lora-connect/sx1262#documentation).
+## Documentation
 
-## Layout
+- SX1261/2 product page and documentation: [Semtech SX1262](https://www.semtech.com/products/wireless-rf/lora-connect/sx1262#documentation)
+- Repository layout: library in **`LoRa/`**, sample in **`samples/Sx1262Sample/`**, hardware-free tests in **`tests/`**
 
-- **`LoRa/`** — Library (`Iot.Device.LoRa`): `ILoRaDevice`, `Sx1262` driver, `LoRaMessage`, and related types.
-- **`samples/Sx1262Sample/`** — ESP32 sample using SPI1 (Heltec Vision Master E213 style pinout). See [samples/Sx1262Sample](samples/Sx1262Sample).
-- **`tests/`** — `LoRaTests` project: hardware-free unit tests (for example `Sx1262.DecodeChipMode`, `LoRaMessage` behavior). Build and run this project in the nanoFramework test runner.
+## Board
 
-## Wiring (sample / HT-VME213 style)
+LoRa modules that expose SPI (NSS, SCK, MOSI, MISO), **RESET**, **BUSY**, and **DIO1** can be used with **`Sx1262`**. Use **3.3 V** logic and wiring per your module’s pinout.
 
-| SX1262 signal | ESP32 function (sample) | GPIO (sample) |
-|---------------|-------------------------|-----------------|
-| MOSI          | SPI1 MOSI               | 10              |
-| MISO          | SPI1 MISO               | 11              |
-| SCK           | SPI1 CLOCK              | 9               |
-| NSS / CS      | SPI1 chip select        | 8               |
-| RESET         | GPIO output             | 12              |
-| BUSY          | GPIO input              | 13              |
-| DIO1          | GPIO input (IRQ)        | 14              |
+The sample below follows a **Heltec Vision Master E213 (HT-VME213)** style mapping on **ESP32** with **SPI1**. You can adapt the same pattern to any MCU with an SPI port and three free GPIOs.
 
-Use 3.3 V logic levels. Connect module GND and VCC per your board’s requirements.
+> **Tip:** You can add a module photo and a wiring diagram to this folder (for example `sensor.jpg` and a breadboard image) and reference them here, similar to [devices/Nrf24l01](https://github.com/nanoframework/nanoFramework.IoT.Device/tree/main/devices/Nrf24l01).
 
-## Minimal usage
+## Usage
 
-1. Configure the MCU SPI pins (on ESP32, `Configuration.SetPinFunction` for the chosen bus).
-2. Create an `SpiDevice` with the correct chip select.
-3. Open **`Sx1262`**, then call **`Reset()`**, **`Initialize()`**, wire **`PacketReceived`**, and **`StartPolling()`** for receive; call **`Send(byte[], int)`** from a thread other than the poll thread.
+### Hardware required
+
+- SX1262-based module (3.3 V)
+- Host MCU with SPI (the sample targets **ESP32**)
+- Jumper wires
+
+### Connection (sample — ESP32 SPI1, HT-VME213 style)
+
+- VCC — 3.3 V (per module datasheet)
+- GND — GND
+- MOSI — SPI1 MOSI (GPIO **10** in the sample)
+- MISO — SPI1 MISO (GPIO **11**)
+- SCK — SPI1 clock (GPIO **9**)
+- NSS / CS — SPI1 chip select (GPIO **8**)
+- RESET — GPIO output (GPIO **12**)
+- BUSY — GPIO input (GPIO **13**)
+- DIO1 — GPIO input, IRQ (GPIO **14**)
+
+### Code
+
+**Important:** On **ESP32**, configure SPI pin functions before **`SpiDevice.Create`**, and add the **`nanoFramework.Hardware.Esp32`** NuGet package to your application (see **`samples/Sx1262Sample`**).
 
 ```csharp
+using System;
+using System.Device.Gpio;
+using System.Device.Spi;
+using System.Diagnostics;
+using System.Text;
+using System.Threading;
+
 using Iot.Device.LoRa;
 using Iot.Device.LoRa.Drivers.Sx1262;
 
-// After SPI pin configuration and SpiDevice.Create(...):
+using nanoFramework.Hardware.Esp32;
+
+// Map SPI1 on ESP32 (GPIOs must match your board)
+Configuration.SetPinFunction(10, DeviceFunction.SPI1_MOSI);
+Configuration.SetPinFunction(9, DeviceFunction.SPI1_CLOCK);
+Configuration.SetPinFunction(11, DeviceFunction.SPI1_MISO);
+
+SpiConnectionSettings settings = new SpiConnectionSettings(1, chipSelectLine: 8)
+{
+    ClockFrequency = 1_000_000,
+    Mode = SpiMode.Mode0,
+    DataBitLength = 8
+};
+
+using GpioController gpio = new GpioController();
+using SpiDevice spi = SpiDevice.Create(settings);
+
+// SPI device, reset, BUSY, DIO1; share gpio and do not dispose it from the driver when appropriate
 using (Sx1262 lora = new Sx1262(spi, resetPin: 12, busyPin: 13, dio1Pin: 14, gpioController: gpio, shouldDispose: false))
 {
     lora.Reset();
     lora.Initialize();
-    lora.PacketReceived += (s, msg) => { /* handle msg.Payload, msg.Rssi, msg.Snr */ };
+
+    lora.PacketReceived += (sender, msg) =>
+    {
+        string text = Encoding.UTF8.GetString(msg.Payload, 0, msg.Payload.Length);
+        Debug.WriteLine("RX: '" + text + "' RSSI=" + msg.Rssi + " dBm SNR=" + msg.Snr + " dB");
+    };
+
     lora.StartPolling();
-    lora.Send(System.Text.Encoding.UTF8.GetBytes("Hello"), timeoutMs: 3000);
+
+    while (true)
+    {
+        string message = "Hello from .NET nanoFramework: " + DateTime.UtcNow;
+        Debug.WriteLine(message);
+        lora.Send(Encoding.UTF8.GetBytes(message), timeoutMs: 3000);
+        Thread.Sleep(10_000);
+    }
 }
 ```
 
-See **`samples/Sx1262Sample/Program.cs`** for a full ESP32 SPI1 example with periodic transmit and logging.
+For **STM32** and other targets, use your platform’s SPI preset pins and chip select; you do not need **`nanoFramework.Hardware.Esp32`**.
 
-## Usage notes
+**Usage notes**
 
-After **`Reset()`**, call **`Initialize()`** once to run the full radio setup sequence (frequency, modulation, IRQ masks, and so on), then start receive polling or transmit as needed.
+- Call **`Reset()`** then **`Initialize()`** once before TX/RX.
+- **`Send`** must not be called from the **`PacketReceived`** callback (poll thread); send from the main loop or another worker thread.
+- Full error handling, cleanup, and **`StopPolling`** are in **`samples/Sx1262Sample/Program.cs`**.
+
+### Result
+
+After deployment, use the debug console to see startup logs, transmitted lines, and received packets with RSSI/SNR. You can capture a screenshot and add **`RunningResult.jpg`** here, as in the [Nrf24l01 sample](https://github.com/nanoframework/nanoFramework.IoT.Device/tree/main/devices/Nrf24l01).
